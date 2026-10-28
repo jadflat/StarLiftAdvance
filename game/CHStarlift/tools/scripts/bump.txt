@@ -1,0 +1,15 @@
+# The autopilot chasing UFOs without shooting (-D SL_BOT -D SL_BUMP -D SL_TRACE): bumps should clang, not cost shield
+wait 40
+tap A
+wait 400
+snap b0
+wait 300
+snap b1
+wait 300
+snap b2
+wait 300
+snap b3
+wait 300
+snap b4
+wait 300
+snap b5

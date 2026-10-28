@@ -1,0 +1,5 @@
+# trailer: the title screen
+wait 30
+rec start 1
+wait 90
+rec stop title

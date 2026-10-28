@@ -1,0 +1,4 @@
+# Find the sandworm (stage 2, autopilot): the trace logs its state
+wait 60
+tap A
+wait 3000

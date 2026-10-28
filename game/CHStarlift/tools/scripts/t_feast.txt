@@ -1,0 +1,7 @@
+# trailer: the feast (-D SL_DLV=2)
+wait 40
+tap A
+wait 236
+rec start 1
+wait 80
+rec stop feast

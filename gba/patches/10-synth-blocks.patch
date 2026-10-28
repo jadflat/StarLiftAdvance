@@ -1,0 +1,32 @@
+# 10-synth-blocks: the synth rendered a block at a time, and its mix before the 8-bit knee (SOUND-PLAN.md).
+#
+# Appends synth_blocks.inc to Synth.cpp (it needs the synth's own state, so it has to be in the same file): blocks::render()
+# makes the same samples as synth::sample(), about half the CPU, and hands gba_audio.cpp the signed mix before the knee.
+# sample() itself is left as it is and, no longer called, dropped by the linker. tools/synthcheck.py proves the two agree.
+
+@@ Synth.cpp
+<<<<<<<
+#else
+void synth::begin() {}
+#endif
+=======
+#else
+void synth::begin() {}
+#endif
+#include "synth_blocks.inc"    // GBA: patch 10-synth-blocks
+>>>>>>>
+
+# envTick() and nextStep() run from IWRAM about twice a VBlank: compiled for size there (-O3 unrolled them to 2.7 KB),
+# which makes room for blocks::render()'s sine table and ARM loops. Only the code changes.
+@@ Synth.cpp
+<<<<<<<
+void nextStep() {
+=======
+__attribute__((minsize)) void nextStep() {    // GBA: patch 10-synth-blocks
+>>>>>>>
+@@ Synth.cpp
+<<<<<<<
+void envTick() {
+=======
+__attribute__((minsize)) void envTick() {     // GBA: patch 10-synth-blocks
+>>>>>>>

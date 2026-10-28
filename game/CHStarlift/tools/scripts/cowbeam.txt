@@ -1,0 +1,15 @@
+# A saucer beams up a grazing cow (-D SL_DLV=3)
+wait 40
+tap A
+wait 215
+snap b0
+wait 6
+snap b1
+wait 6
+snap b2
+wait 6
+snap b3
+wait 6
+snap b4
+wait 6
+snap b5

@@ -1,0 +1,7 @@
+# trailer: the takeaway speeder and a cow (-D SL_DLV=1)
+wait 40
+tap A
+wait 200
+rec start 1
+wait 160
+rec stop dlv

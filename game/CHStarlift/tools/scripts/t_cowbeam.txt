@@ -1,0 +1,7 @@
+# trailer: a saucer beams up a grazing cow (-D SL_DLV=3)
+wait 40
+tap A
+wait 200
+rec start 1
+wait 90
+rec stop cowbeam

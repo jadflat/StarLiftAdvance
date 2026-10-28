@@ -1,0 +1,40 @@
+# 01-scenery-rows: the parallax layers and the ground filled a word (8 pixels) at a time instead of a nibble at a time.
+#
+# On the board the scenery is drawn a column at a time (drawLayerCols, drawGroundCols: colFill, colTex, colPair), each
+# pixel a read-modify-write of a byte at stride 64. On the GBA that was half of the frame. This patch renames the two
+# game functions to old_drawLayerCols / old_drawGroundCols (kept for the GBA_SCENECHECK build, otherwise unused and
+# dropped by the compiler) and includes scenery_rows.inc, which defines new ones drawing the same picture in 8-column
+# strips, row by row, with whole-word writes. Their callers (drawWorld, drawTitleScene) come later in the file and so
+# get the new ones. A line in buildTile tells them when the texture changed (they keep it by rows).
+
+@@ sketch.cpp
+<<<<<<<
+static void buildTile() {
+=======
+static bool slgTileNew = true, slgStageNew = true;    // GBA: patch 01-scenery-rows (the texture's rows, the ground layer: again)
+static void buildTile() {
+    slgTileNew = slgStageNew = true;
+>>>>>>>
+
+@@ sketch.cpp
+<<<<<<<
+static void drawLayerCols(int L) {
+=======
+static void old_drawLayerCols(int L) {
+>>>>>>>
+
+@@ sketch.cpp
+<<<<<<<
+static void drawGroundCols() {
+=======
+static void old_drawGroundCols() {
+>>>>>>>
+
+@@ sketch.cpp
+<<<<<<<
+// ---- structures on the background layers ----------------------------------------------------------------------------
+=======
+#include "scenery_rows.inc"    // GBA: patch 01-scenery-rows
+
+// ---- structures on the background layers ----------------------------------------------------------------------------
+>>>>>>>

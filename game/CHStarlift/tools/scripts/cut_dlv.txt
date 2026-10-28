@@ -1,0 +1,7 @@
+# The delivery cut-scene (-D SL_DLV=1)
+wait 40
+tap A
+wait 200
+rec start 2
+wait 330
+rec stop cut_dlv

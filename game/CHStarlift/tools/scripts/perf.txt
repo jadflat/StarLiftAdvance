@@ -1,0 +1,19 @@
+# Board frame times (cl run --device): set DEFINES in tools/game.py (SL_SLIM, SL_BOT, SL_START=n, SL_STORM); a PERF line every 300 frames.
+wait 150
+perf menus
+wait 300
+perf p1
+wait 300
+perf p2
+wait 300
+perf p3
+wait 300
+perf p4
+wait 300
+perf p5
+wait 300
+perf p6
+wait 300
+perf p7
+wait 300
+perf p8

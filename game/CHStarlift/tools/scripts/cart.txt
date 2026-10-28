@@ -1,0 +1,3 @@
+# the box art's source: the title screen
+wait 150
+snap title

@@ -1,0 +1,7 @@
+# one world's clip for docs/gameplay.gif (-D SL_BOT -D SL_START=n -D GIFNAME): the autopilot flies
+wait 60
+tap A
+wait 160
+rec start 3
+wait 150
+rec stop clip

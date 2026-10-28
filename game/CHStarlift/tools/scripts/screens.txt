@@ -1,0 +1,23 @@
+# The menus and screens in the small font: title, how to play, options, a stage, the pause menu
+wait 40
+snap s0
+tap DOWN
+tap A
+wait 10
+snap s1
+tap B
+wait 5
+tap DOWN
+tap A
+wait 10
+snap s2
+tap B
+wait 5
+tap UP
+tap UP
+tap A
+wait 150
+snap s3
+tap START
+wait 5
+snap s4

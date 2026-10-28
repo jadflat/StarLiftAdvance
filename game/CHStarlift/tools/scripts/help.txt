@@ -1,0 +1,18 @@
+# The three help pages and the options
+wait 40
+tap DOWN
+tap A
+wait 10
+snap h1
+tap A
+wait 5
+snap h2
+tap A
+wait 5
+snap h3
+tap A
+wait 5
+tap DOWN
+tap A
+wait 10
+snap h4

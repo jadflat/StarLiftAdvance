@@ -1,0 +1,17 @@
+{
+  "id": "starlift",
+  "title": "STARLIFT",
+  "author": "Jadflat",
+  "genre": "Action",
+  "description": "Fly a rocket lander across eight alien planets, rescue the stranded colonists and carry them home to the base pad, past saucers and snatchers.",
+  "license": "MIT",
+  "buttons": [
+    { "control": "LEFT / RIGHT", "action": "Rotate the lander" },
+    { "control": "A", "action": "Main engine (hold)" },
+    { "control": "B", "action": "Rotary cannon and laser" },
+    { "control": "UP (hold)", "action": "Charge shot" },
+    { "control": "DOWN (twice)", "action": "Landing gear" },
+    { "control": "START", "action": "Pause menu" },
+    { "control": "START (hold 3 s)", "action": "Back to the CHGame menu" }
+  ]
+}

@@ -1,0 +1,5 @@
+# docs/gameplay.gif: the title (then gif_world.txt per world with -D SL_BOT -D SL_START=n, then cl gif --no-run)
+wait 30
+rec start 3
+wait 120
+rec stop 01_title

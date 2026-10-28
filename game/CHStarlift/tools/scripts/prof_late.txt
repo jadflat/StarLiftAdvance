@@ -1,0 +1,3 @@
+# Where the frame goes late in a stage (CHGAME_PROFILE=1 in tools/game.py): slots as in prof.txt
+wait 1150
+prof

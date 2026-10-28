@@ -1,0 +1,14 @@
+# On the pad: fire right, tap LEFT, fire left
+wait 40
+tap A
+wait 260
+tap A
+wait 40
+hold B
+wait 6
+snap f0
+hold LEFT
+wait 2
+hold B
+wait 6
+snap f1

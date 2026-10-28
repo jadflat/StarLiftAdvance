@@ -1,0 +1,17 @@
+# The charge shot in the air: climb, hold UP, let go: the third ball falls to the ground
+wait 40
+tap A
+wait 260
+tap A
+wait 40
+hold A
+wait 22
+hold UP
+wait 16
+release
+wait 1
+snap a0
+wait 2
+snap a1
+wait 2
+snap a2

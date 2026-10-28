@@ -1,0 +1,11 @@
+# A shorter board run (cl run --device): set DEFINES in tools/game.py (SL_SLIM, SL_BOT, SL_START=n); a PERF line every 300 frames.
+wait 150
+perf menus
+wait 300
+perf p1
+wait 300
+perf p2
+wait 300
+perf p3
+wait 300
+perf p4

@@ -1,0 +1,9 @@
+# One world: the intro, then the autopilot (-D SL_BOT -D SL_START=n) flies for a while
+wait 60
+tap A
+wait 40
+snap w0
+wait 330
+snap w1
+wait 300
+snap w2

@@ -1,0 +1,56 @@
+# 04-hills-bg: the far and mid hills on GBA background layers 2 and 3 (hills_bg.inc, included by scenery_rows.inc).
+#
+# Drawn into the picture they were ~7 ms of a ~36 ms frame. Here: the picture is cleared see-through down to the near
+# hills; the sky objects and the far and mid layers' structures are clipped (gba_clipY) to the rows the layers in front
+# leave open; drawLayerCols(0) and (1) only stream new tile columns and set the scroll. Needs patch 01 (applied first).
+
+@@ sketch.cpp
+<<<<<<<
+static bool slgTileNew = true, slgStageNew = true;    // GBA: patch 01-scenery-rows (the texture's rows, the ground layer: again)
+static void buildTile() {
+    slgTileNew = slgStageNew = true;
+=======
+static bool slgTileNew = true, slgStageNew = true;    // GBA: patch 01-scenery-rows (the texture's rows, the ground layer: again)
+static bool hbgStageNew = true;                       // GBA: patch 04-hills-bg (the hills' layers: again)
+static void buildTile() {
+    slgTileNew = slgStageNew = hbgStageNew = true;
+>>>>>>>
+
+@@ sketch.cpp
+<<<<<<<
+RAMFUNC(pset) static void pset(int x, int y, uint8_t c) {                         // in RAM: every single pixel goes through it
+    if ((unsigned)x >= SW || (unsigned)y >= SH) return;
+=======
+extern "C" { extern const uint8_t *gba_clipY; }   // GBA: patch 04-hills-bg (gba/src/gfx_gba.cpp)
+static int hbgPrep();                             // GBA: patch 04-hills-bg (hills_bg.inc)
+RAMFUNC(pset) static void pset(int x, int y, uint8_t c) {                         // in RAM: every single pixel goes through it
+    if ((unsigned)x >= SW || (unsigned)y >= SH) return;
+    if (gba_clipY && y >= gba_clipY[x]) return;                                    // GBA: behind a hills layer
+>>>>>>>
+
+@@ sketch.cpp
+<<<<<<<
+    // the GBA paints the sky itself, smoothly (a colour each screen line, behind the picture): here it is just left clear
+    int low = TOP;
+    for (int x = 0; x < SW; x++) if (topA[0][x] > low) low = topA[0][x];
+=======
+    // the GBA paints the sky itself, smoothly (a colour each screen line, behind the picture): here it is just left clear,
+    // down to the near hills (the far and mid hills are layers behind the picture: patch 04-hills-bg)
+    const int low = hbgPrep();                                                       // (also the clip rows: hills_bg.inc)
+>>>>>>>
+
+@@ sketch.cpp
+<<<<<<<
+static void drawSkyObjects() {
+=======
+static void skyObjects_() {           // GBA: drawSkyObjects() is in hills_bg.inc (patch 04-hills-bg), clipped
+>>>>>>>
+
+@@ sketch.cpp
+<<<<<<<
+static void drawStructures(int L) {
+=======
+static void structures_(int L);
+static void drawStructures(int L) { hbgClipFor(L == 0 ? 1 : L == 1 ? 2 : -1); structures_(L); hbgClipFor(-1); }   // GBA: patch 04
+static void structures_(int L) {
+>>>>>>>

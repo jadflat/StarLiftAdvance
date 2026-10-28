@@ -1,0 +1,9 @@
+# Each stage's alien colours (who's who) and the camps (-D SL_BOT -D SL_START=n)
+wait 40
+tap A
+wait 125
+snap v0
+wait 160
+snap v1
+wait 200
+snap v2

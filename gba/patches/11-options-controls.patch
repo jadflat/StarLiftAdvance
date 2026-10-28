@@ -1,0 +1,39 @@
+# 11-options-controls: a CONTROLS line in the title's OPTIONS menu (between FX and BACK) that opens the GBA's button
+# remapping screen (gba/src/controls_gba.cpp; L + R + SELECT opens it too).
+
+@@ sketch.cpp
+<<<<<<<
+    panel(30, 66);
+    textCS(34, T(MS_OPTIONS), C_GOLD);
+    for (int i = 0; i < 3; i++) {
+        text35(22 + UX, 48 + UY + i * 12, T((uint8_t)(MS_MUSIC + i)), optSel == i ? C_GOLD : C_WHITE);
+=======
+    panel(30, 78);
+    textCS(34, T(MS_OPTIONS), C_GOLD);
+    for (int i = 0; i < 4; i++) {                                  // GBA: patch 11 (CONTROLS is line 2, BACK line 3)
+        text35(22 + UX, 48 + UY + i * 12, i == 2 ? "CONTROLS" : T((uint8_t)(MS_MUSIC + (i == 3 ? 2 : i))), optSel == i ? C_GOLD : C_WHITE);
+>>>>>>>
+
+@@ sketch.cpp
+<<<<<<<
+    text35(10 + UX, 88 + UY, T(MS_LEFT_RIGHT_CHANGE_A_OR_B_BACK), C_SILVER);
+=======
+    text35(10 + UX, 100 + UY, T(MS_LEFT_RIGHT_CHANGE_A_OR_B_BACK), C_SILVER);
+>>>>>>>
+
+@@ sketch.cpp
+<<<<<<<
+        if (edge & 1) optSel = (uint8_t)((optSel + 2) % 3);
+        if (edge & 2) optSel = (uint8_t)((optSel + 1) % 3);
+=======
+        if (edge & 1) optSel = (uint8_t)((optSel + 3) % 4);        // GBA: patch 11 (four lines)
+        if (edge & 2) optSel = (uint8_t)((optSel + 1) % 4);
+        if ((edge & 4) && optSel == 2) { extern void gba_controls(); gba_controls(); sfx(S_BOARD); break; }
+>>>>>>>
+
+@@ sketch.cpp
+<<<<<<<
+        if ((edge & 8) || ((edge & 4) && optSel == 2)) {               // back: keep the levels with the save
+=======
+        if ((edge & 8) || ((edge & 4) && optSel == 3)) {               // back: keep the levels with the save
+>>>>>>>

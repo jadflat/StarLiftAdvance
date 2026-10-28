@@ -1,0 +1,10 @@
+# The autopilot late in a stage (-D SL_BOT -D SL_START=n): snaps where the board run slowed
+wait 150
+wait 600
+snap l0
+wait 300
+snap l1
+wait 300
+snap l2
+wait 300
+snap l3

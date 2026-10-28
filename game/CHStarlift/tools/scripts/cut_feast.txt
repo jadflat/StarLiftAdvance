@@ -1,0 +1,7 @@
+# The feast cut-scene (-D SL_DLV=2)
+wait 40
+tap A
+wait 200
+rec start 2
+wait 300
+rec stop cut_feast

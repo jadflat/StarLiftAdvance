@@ -1,0 +1,15 @@
+# build output (python gba/build.py makes it all again)
+gba/build*/
+gba/out*/
+gba/STARLIFT.gba
+game/out/
+game/build/
+game/CHStarlift/build/
+__pycache__/
+*.sav
+gba/logo.bin
+PLAN.md
+gba/SOUND-PLAN.md
+gba/sd_base/
+trailer/
+work/

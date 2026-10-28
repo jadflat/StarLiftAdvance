@@ -1,0 +1,22 @@
+# trailer: a boss (-D SL_DLV=5 -D SL_START=n): the lander held beside it (test hook), firing
+wait 40
+tap A
+wait 300
+rec start 1
+hold B
+wait 9
+release
+wait 6
+hold B
+wait 9
+release
+wait 6
+hold B
+wait 9
+release
+wait 6
+hold B
+wait 9
+release
+wait 6
+rec stop boss

@@ -1,0 +1,36 @@
+# 03-span-fast: CHGfx's horizontal spans (gfx_hline, so every fillRect and R() in the game) through span_fast.inc.
+#
+# The library's spanBody stores a word at a time in a plain loop: measured in mGBA, a 240x24 fillRect took 0.62 ms
+# where the same bytes by store multiple take 0.21 ms (the framebuffer is in EWRAM, where the loop's overhead and
+# every access count). The same pixels; only the copy of the library in gba/build/lib is changed.
+
+@@ ../lib/CHGfx/CHGfx_draw.cpp
+<<<<<<<
+static GFX_INLINE void spanBody(uint8_t *row, int x0, int x1, uint8_t c) {
+    int w = x1 - x0;
+    if (w <= 0) return;
+=======
+#include "../../gen/span_fast.inc"     // GBA: patch 03-span-fast
+extern "C" { extern const uint8_t *gba_clipY; }   // GBA: patch 04-hills-bg (gfx_gba.cpp)
+static GFX_INLINE void spanBody(uint8_t *row, int x0, int x1, uint8_t c) {
+    gbaSpan(row, x0, x1, c);
+}
+static GFX_INLINE void oldSpanBody(uint8_t *row, int x0, int x1, uint8_t c) {
+    int w = x1 - x0;
+    if (w <= 0) return;
+>>>>>>>
+
+# patch 04-hills-bg's clip: while gba_clipY is set, nothing at or below row gba_clipY[x] (behind a hills layer)
+@@ ../lib/CHGfx/CHGfx_draw.cpp
+<<<<<<<
+    spanBody(rowPtr(y), x, x1, (uint8_t)(c & 0x0F));
+}
+=======
+    if (gba_clipY) {
+        uint8_t *row = rowPtr(y);
+        for (; x < x1; x++) if (y < gba_clipY[x]) spanBody(row, x, x + 1, (uint8_t)(c & 0x0F));
+        return;
+    }
+    spanBody(rowPtr(y), x, x1, (uint8_t)(c & 0x0F));
+}
+>>>>>>>

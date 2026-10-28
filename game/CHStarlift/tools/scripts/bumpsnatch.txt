@@ -1,0 +1,15 @@
+# A bump knocks a saucer's takeaway loose (-D SL_DLV=4): the lander lifts off into it
+wait 40
+tap A
+wait 260
+tap A
+wait 10
+snap s0
+hold A
+wait 14
+release
+snap s1
+wait 6
+snap s2
+wait 20
+snap s3

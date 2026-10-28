@@ -1,0 +1,13 @@
+# Sabulon (-D SL_START=2 -D SL_BOT): worms under the sand
+wait 60
+tap A
+wait 200
+snap d1
+wait 150
+snap d2
+wait 150
+snap d3
+wait 150
+snap d4
+wait 150
+snap d5

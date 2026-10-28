@@ -1,0 +1,23 @@
+# 02-blit-runs: blitRd (every sprite, card picture and background structure) without a call per run of pixels.
+#
+# The game's blitRd reads the run-length bytes through Rd::next() (its fields live in memory, so each byte is several
+# loads and stores) and draws each run with a call: gfx_hline for runs over 2 pixels, pset for each pixel of shorter
+# ones. On the GBA, blitRd, gfx_hline and pset were ~13 ms of a GAME OVER frame. This patch renames the game's to
+# old_blitRd (kept, out of IWRAM, for the GBA_SCENECHECK build; otherwise unused and dropped) and includes
+# blit_runs.inc, a blitRd that keeps the reader in registers and writes the runs itself, with the same clipping:
+# gfx_hline's (the library's clip rectangle) for long runs, pset's (the screen) for short ones.
+
+@@ sketch.cpp
+<<<<<<<
+RAMFUNC(blitRd) static void blitRd(Rd &rd, int w, int h, int x, int y, bool flip, uint8_t solid, const uint8_t *map) {
+=======
+static void old_blitRd(Rd &rd, int w, int h, int x, int y, bool flip, uint8_t solid, const uint8_t *map) {
+>>>>>>>
+
+@@ sketch.cpp
+<<<<<<<
+static NOINL void blit(const Spr &s, int x, int y, bool flip, uint8_t solid = 255, const uint8_t *map = MAP) { Rd rd = { s.d, 0, 0, false }; blitRd(rd, s.w, s.h, x, y, flip, solid, map); }
+=======
+#include "blit_runs.inc"    // GBA: patch 02-blit-runs
+static NOINL void blit(const Spr &s, int x, int y, bool flip, uint8_t solid = 255, const uint8_t *map = MAP) { Rd rd = { s.d, 0, 0, false }; blitRd(rd, s.w, s.h, x, y, flip, solid, map); }
+>>>>>>>

@@ -1,0 +1,16 @@
+# trailer: the three-way charge shot on the pad
+wait 40
+tap A
+wait 260
+tap A
+wait 30
+hold RIGHT
+wait 3
+release
+rec start 1
+wait 4
+hold UP
+wait 18
+release
+wait 30
+rec stop charge

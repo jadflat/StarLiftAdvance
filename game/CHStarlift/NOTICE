@@ -1,0 +1,9 @@
+STARLIFT
+Copyright 2026 Jadflat. The game's own code, art and music are under the MIT licence (see LICENSE).
+
+Built on CHGame, Copyright 2026 Kevin Bates (bateske), Apache-2.0: the framework is vendored in chgame/
+(see chgame/NOTICE and chgame/LICENSE).
+
+The sound output's timer setup follows chgame-soundtracks (ESPboy-edu/ESPboy_CHCore), BSD 3-Clause: see THIRD-PARTY.md.
+
+The pixel art was drawn as grids and rendered with the pixel-art-gen Claude skill.

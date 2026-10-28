@@ -1,0 +1,20 @@
+# The title menu (difficulty), the stage card, who's who, then the pause menu
+wait 40
+tap DOWN
+tap A
+wait 5
+snap r0
+tap UP
+tap A
+wait 40
+snap r1
+wait 80
+snap r2
+tap A
+wait 60
+tap START
+wait 5
+tap DOWN
+tap RIGHT
+wait 5
+snap r3

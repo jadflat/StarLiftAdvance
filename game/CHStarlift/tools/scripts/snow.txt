@@ -1,0 +1,13 @@
+# Cryo's snow in changing wind (-D SL_START=3): snaps as the wind veers
+wait 60
+tap A
+wait 150
+snap s1
+wait 90
+snap s2
+wait 90
+snap s3
+wait 90
+snap s4
+wait 90
+snap s5

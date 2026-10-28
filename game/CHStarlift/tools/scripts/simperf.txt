@@ -1,0 +1,6 @@
+# A rough frame-time estimate in the simulator (the board is the real test): cal times CHGfx's primitives
+cal
+wait 300
+perf a
+wait 300
+perf b

@@ -1,0 +1,16 @@
+# Up and out of the screen: full thrust from the pad, then fall back
+wait 60
+tap A
+wait 130
+hold A
+wait 40
+snap c1
+wait 60
+snap c2
+wait 80
+snap c3
+release
+wait 60
+snap c4
+wait 50
+snap c5

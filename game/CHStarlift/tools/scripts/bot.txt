@@ -1,0 +1,23 @@
+# The autopilot (-D SL_BOT) plays; a snap every 600 frames.
+wait 60
+tap A
+wait 600
+snap b01
+wait 600
+snap b02
+wait 600
+snap b03
+wait 600
+snap b04
+wait 600
+snap b05
+wait 600
+snap b06
+wait 600
+snap b07
+wait 600
+snap b08
+wait 600
+snap b09
+wait 600
+snap b10

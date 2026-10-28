@@ -1,0 +1,9 @@
+# The feast at the base (-D SL_DLV=2): fireworks and the food at the door
+wait 40
+tap A
+wait 240
+snap p0
+wait 20
+snap p1
+wait 25
+snap p2

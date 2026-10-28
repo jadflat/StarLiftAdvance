@@ -1,0 +1,21 @@
+# The takeaway speeder (-D SL_DLV=1): it fetches the bag and brings it up to the lander; a cow tumbles down and grazes
+wait 40
+tap A
+wait 225
+snap d0
+wait 10
+snap d1
+wait 10
+snap d2
+wait 10
+snap d3
+wait 10
+snap d4
+wait 8
+snap d5
+wait 8
+snap d6
+wait 8
+snap d7
+wait 10
+snap d8

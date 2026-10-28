@@ -1,0 +1,22 @@
+# Title, the intro, take-off and a little flight: snaps to look at
+wait 40
+snap t0
+tap A
+wait 30
+snap i0
+wait 100
+snap p0
+hold A
+wait 25
+snap p1
+hold A+RIGHT
+wait 6
+hold A
+wait 30
+snap p2
+hold RIGHT+B
+wait 20
+snap p3
+hold B
+wait 40
+snap p4

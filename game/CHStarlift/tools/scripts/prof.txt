@@ -1,0 +1,7 @@
+# Where a frame's time goes (CHGAME_PROFILE=1 in tools/game.py): slots 0 layer tops, 1 sky, 2 sky objects, 3 layers and buildings, 4 ground, 5 things on the ground, 6 colonists and enemies, 7 lander shots weather, 8 HUD
+wait 450
+prof
+wait 300
+prof
+wait 300
+perf

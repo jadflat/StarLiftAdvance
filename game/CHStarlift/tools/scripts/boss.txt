@@ -1,0 +1,7 @@
+# A boss stage's boss (-D SL_DLV=5 -D SL_START=n): the lander dropped by it
+wait 40
+tap A
+wait 240
+snap k0
+wait 30
+snap k1
