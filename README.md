@@ -1,5 +1,7 @@
 # StarLift Advance
 
+![StarLift Advance](docs/starlift-advance.gif)
+
 STARLIFT, the lander-rescue game made for the CHGame handheld, redrawn for the whole Game Boy Advance screen:
 240x160, pixel for pixel, nothing stretched. Version **FS 0.8**, from the CHGame version 0.24 (merged in with its bosses,
 chrome title, cut-scenes and balance changes).
@@ -53,13 +55,11 @@ picture drawing with the patched versions (no difference in 12,000 scenery and 4
 ground layer with the picture's own ground pixel for pixel (no difference in 3000 frames, FS 0.3; the pebbles are new
 since).
 
-**Speed: not 30 fps yet.** The median frame takes about 38 ms (about 26 fps); the game counts frames, so it plays a
-little slower than on the CHGame board. A stage's first frame (the game builds the stage) takes about 230 ms. What
-costs: a 240x160 picture is 2.3 times the board's pixels, and it has to live in the GBA's slower 16-bit memory (EWRAM:
-the fast 32 KB is full) and be copied to video memory every frame (3.7 ms). Moving the ground to a hardware layer saved
-about 2 ms; the near hills on a layer of their own saved nothing (clearing the picture under them cost as much) and
-video memory has no room for more layers next to a double-buffered full-screen picture. Getting to 30 fps needs a
-different design: the scenery and sprites drawn by the GBA's own layers and sprites instead of a software picture.
+**Speed (FS 0.8, latest run, 3000 scripted frames from a fresh save):** the typical frame takes 21-26 ms of the 33.3 ms
+budget, and 58 of 2998 frames went over (about 2%): the title (first frame 275 ms), the stage builds (about 225-260 ms), and
+short runs of 34-100 ms at explosions and scene cuts (frames 1031-1110, 2200-2260, 2673-2678). So it holds 30 fps in play;
+the hitches are the stage loads and the busiest explosions. Costs: a 240x160 picture is 2.3 times the board's pixels, held in
+the GBA's slower EWRAM and copied to video memory every frame (3.1 ms).
 
 Not tried: a real GBA. The MiSTer GBA core: FS builds up to 0.1 were played there; 0.2-0.4 have not been tried yet.
 The sound (including the echo) has not been listened to; its levels were checked (no clipping).
