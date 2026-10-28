@@ -81,7 +81,7 @@ static bool readBlk(uint32_t k, uint8_t *dst) {
 }
 
 #ifdef CHGBA
-extern "C" const uint8_t _dat_start[];          // Star Lift GBA FS: STARLIFT.DAT is in the cartridge ROM (gba/src/fat_rom.cpp)
+extern "C" const uint8_t _dat_start[];          // StarLift Advance: STARLIFT.DAT is in the cartridge ROM (gba/src/fat_rom.cpp)
 extern "C" const uint32_t gba_datBlocks;
 bool open() {                                   // the GBA: no card to search, only the file's header to check
     open_ = gba_datBlocks && !memcmp(_dat_start, "STARLIFT", 8) && !memcmp(_dat_start + 8, &CARD_HASH, 4);

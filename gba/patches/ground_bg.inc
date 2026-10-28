@@ -1,4 +1,4 @@
-// Star Lift GBA FS (included by scenery_rows.inc): the ground on the GBA's background layer 1, behind the picture.
+// StarLift Advance (included by scenery_rows.inc): the ground on the GBA's background layer 1, behind the picture.
 //
 // The ground is fixed in the world, so it is drawn once into tiles, 8 columns at a time as they come into view, and
 // the hardware scrolls it (BG1, 256 pixels around, a ring of 32 tile columns). The picture (BG0) is cleared to colour 0
@@ -42,7 +42,7 @@ __attribute__((noinline)) static void gbgReset() {
     for (int i = 0; i < 32; i++) gbgCol[i] = -1;
 }
 
-// Star Lift GBA FS detail: a pebble here? About one in 60 soil pixels, from a 64 x 32 table made once a stage (the
+// StarLift Advance detail: a pebble here? About one in 60 soil pixels, from a 64 x 32 table made once a stage (the
 // pattern repeats every 64 px across; a hash a pixel made each new column cost 1-2 ms)
 static inline bool gbgPebble(int wx, int y) { return (gba_gbgPeb[wx & 63] >> (y & 31)) & 1; }
 

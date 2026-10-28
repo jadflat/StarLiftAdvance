@@ -5,7 +5,7 @@
 // so a flush is a word copy into the tile order) in the set that is not on show, and the next VBlank flips to it and loads
 // the palette: no tearing, and gfx_wait() is "the last flip has happened".
 //
-// Star Lift GBA FS: the library is built 240x160 (GFX_W, GFX_H), the GBA's own screen: GBA_NATIVE. The picture is
+// StarLift Advance: the library is built 240x160 (GFX_W, GFX_H), the GBA's own screen: GBA_NATIVE. The picture is
 // BG0 (mode 0, 4 bits a pixel), 30x20 tiles, nothing scaled. The frame (19,200 bytes) lives in EWRAM.
 // The 128x128 builds (the CHStarlift port): GBA_SCALE picks the picture size (both cost the same: the flush is the same word copy, only the tile order differs):
 //   100: 1:1, 128x128 in the middle of the 240x160 screen on BG0; the border is the backdrop, the game's colour 0.

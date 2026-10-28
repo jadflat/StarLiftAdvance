@@ -115,11 +115,11 @@ enum { ESHOTS = 12, PARTS = 64, WXN = 48 * (GFX_W + 32) / 160, CRITS = 6, MEN = 
 enum { ESHOTS = 12, PARTS = 32, WXN = 48 * (GFX_W + 32) / 160, CRITS = 6, MEN = 20 };
 #endif
 #endif
-#ifdef CHGBA                                       // Star Lift GBA FS: the GBA's extras (gba/src)
+#ifdef CHGBA                                       // StarLift Advance: the GBA's extras (gba/src)
 uint8_t gba_shoulders();                           // L (1) and R (2) held
 void gba_mosaic(uint8_t frames);                   // the picture breaks into blocks for a moment, settling back
 #endif
-// the screen: the CHGame board's 128x128, or another size the library is built for (Star Lift GBA FS: 240x160)
+// the screen: the CHGame board's 128x128, or another size the library is built for (StarLift Advance: 240x160)
 enum { SW = GFX_W, SH = GFX_H, WXR = SW + 32 > 255 ? 255 : SW + 32 };   // WXR: the weather's band across (it wraps)
 // a taller screen: the world sits WDY rows lower; HUDX of them make the HUD (and its radar) taller, the rest more sky
 enum { WDY = SH - 128, HUDX = WDY / 4, SKYX = WDY - HUDX };
@@ -1955,7 +1955,7 @@ static void drawShots() {
 static void drawHud() {
     R(0, 0, SW, TOP, C_INK);
 #ifdef CHGBA
-    {   // Star Lift GBA FS: the top row spread across 240: fuel, colonists, seats, shield, stage, score
+    {   // StarLift Advance: the top row spread across 240: fuel, colonists, seats, shield, stage, score
         text35(2, 1, "FUEL", C_SILVER);
         R(20, 1, 64, 6, C_STEEL);
         const int fw = fuel * 62 / FUEL_MAX;
@@ -2109,7 +2109,7 @@ static void drawTitle() {
     panel(74, n * 9 + 5);
     menuList(it, n, titleSel, 32, 77);
 #ifdef GBA_VERSION
-    text35(2, SH - 6, "V" SL_VERSION " GBA FS " GBA_VERSION, C_SILVER);
+    text35(2, SH - 6, "V" SL_VERSION " ADVANCE " GBA_VERSION, C_SILVER);
 #else
     text35(2, SH - 6, "V" SL_VERSION, C_SILVER);
 #endif

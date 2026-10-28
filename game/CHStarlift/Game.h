@@ -3,7 +3,7 @@
 #include <stdint.h>
 
 // The screen's sixteen colours: nine follow the planet (sky, the three background layers, the ground, an accent), seven are fixed.
-// Star Lift GBA FS: C_SKY0 is colour 0 (the CHGame version has C_INK there), the colour the GBA shows through: the sky is
+// StarLift Advance: C_SKY0 is colour 0 (the CHGame version has C_INK there), the colour the GBA shows through: the sky is
 // left as colour 0 and the hardware paints a smooth gradient behind the picture, a colour a screen line
 enum Col : uint8_t { C_SKY0, C_WHITE, C_INK, C_SKY1, C_GREEN, C_FAR, C_MID, C_NEAR, C_GNDD, C_GND, C_GNDL, C_ACC, C_SILVER, C_STEEL, C_GOLD, C_RED };
 enum Theme : uint8_t { TH_MOON, TH_RUINS, TH_BASE, TH_ALIEN };

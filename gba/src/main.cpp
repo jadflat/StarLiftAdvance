@@ -54,7 +54,7 @@ static uint8_t scriptButtons(uint32_t g) {
     return K[(g / 22) % 8];                                                       // flying about (smoke.lua's pattern)
 }
 
-// the shoulder buttons, which CHGame does not have: Star Lift GBA FS reads them itself (L: the gear, R: the charge shot)
+// the shoulder buttons, which CHGame does not have: StarLift Advance reads them itself (L: the gear, R: the charge shot)
 // (both through the player's button map: controls_gba.cpp, read once a frame by chgame_readButtons)
 uint8_t gba_remap(uint8_t *shoulders);
 static uint8_t s_shoulders;

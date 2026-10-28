@@ -1,4 +1,4 @@
-// Star Lift GBA FS, patch 04-hills-bg (included by scenery_rows.inc): the far and mid hills on background layers 2 and 3.
+// StarLift Advance, patch 04-hills-bg (included by scenery_rows.inc): the far and mid hills on background layers 2 and 3.
 //
 // A layer's picture depends only on its own x (cam >> 3 for the far hills, cam >> 2 for the mid ones) and the screen
 // row: its top (layerH), a lit or shaded rim from the slope, then its body (plain far, the world's texture mid). So, like

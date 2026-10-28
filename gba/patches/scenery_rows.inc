@@ -102,7 +102,7 @@ SLG_IWRAM static void slgStripGround(uint32_t *p, int y, const int *u, const uin
 
 // each layer's columns (see new_drawLayerCols), one pass over the four layers' tops for all three
 #if GFX_W == 240 && GFX_H == 160
-static uint32_t slgCol[1][SW];               // (Star Lift GBA FS: only the near hills are drawn here: hbgPrep, patch 04)
+static uint32_t slgCol[1][SW];               // (StarLift Advance: only the near hills are drawn here: hbgPrep, patch 04)
 #define SLG_COL(L) slgCol[0]
 #else
 static uint32_t slgCol[3][SW];
@@ -202,7 +202,7 @@ SLG_IWRAM static void new_drawGroundCols() {
 
 #ifndef GBA_SCENECHECK
 #if GFX_W == 240 && GFX_H == 160
-#include "hills_bg.inc"                       // Star Lift GBA FS: the far and mid hills on background layers (patch 04)
+#include "hills_bg.inc"                       // StarLift Advance: the far and mid hills on background layers (patch 04)
 static void drawLayerCols(int L) {
     if (L == 0) hbgDraw();
     else if (L == 2) new_drawLayerCols(2);                                 // (the near hills: still drawn, in strips)
@@ -213,7 +213,7 @@ static void drawLayerCols(int L) { new_drawLayerCols(L); new_drawLayerCols(L); }
 static void drawLayerCols(int L) { new_drawLayerCols(L); }
 #endif
 #if GFX_W == 240 && GFX_H == 160
-#include "ground_bg.inc"                      // Star Lift GBA FS: the ground on a background layer of its own
+#include "ground_bg.inc"                      // StarLift Advance: the ground on a background layer of its own
 static void drawGroundCols() { bgGroundDraw(); }
 #else
 static void drawGroundCols() { new_drawGroundCols(); }

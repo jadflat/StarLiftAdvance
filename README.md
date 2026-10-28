@@ -1,4 +1,4 @@
-# Star Lift GBA FS
+# StarLift Advance
 
 STARLIFT, the lander-rescue game made for the CHGame handheld, redrawn for the whole Game Boy Advance screen:
 240x160, pixel for pixel, nothing stretched. Version **FS 0.8**, from the CHGame version 0.24 (merged in with its bosses,

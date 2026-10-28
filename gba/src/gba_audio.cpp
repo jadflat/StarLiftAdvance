@@ -33,7 +33,7 @@ enum : uint16_t { SND_H = 0x3304, SND_RESET = 0x8800 };   // A 100%, B 50%, both
 alignas(4) int8_t gba_audA[2][Q + PAD], gba_audB[2][Q + PAD];   // EWRAM (gba.ld: .bss.gba_*)
 int16_t gba_audX[N];
 uint8_t gba_audCur;                             // the buffer mixed last (tools/sounddump.py reads it)
-// Star Lift GBA FS: a soft echo, for space: 125 ms (1000 samples at 8 kHz) later, at about 28%, feeding back at 35%.
+// StarLift Advance: a soft echo, for space: 125 ms (1000 samples at 8 kHz) later, at about 28%, feeding back at 35%.
 // GBA_ECHO=0 builds it without.
 #ifndef GBA_ECHO
 #define GBA_ECHO 1

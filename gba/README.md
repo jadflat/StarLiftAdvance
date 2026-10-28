@@ -1,4 +1,4 @@
-# STARLIFT for the Game Boy Advance (Star Lift GBA FS 0.4)
+# STARLIFT for the Game Boy Advance (StarLift Advance)
 
     python gba/build.py            # the committed game (git HEAD) -> gba/out/STARLIFT.gba
     python gba/build.py --live     # the working tree as it is (it must compile; CardIndex.h must match dist/STARLIFT.DAT)

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build Star Lift GBA FS: python gba/build.py  ->  gba/out/STARLIFT.gba
+"""Build StarLift Advance: python gba/build.py  ->  gba/out/STARLIFT.gba
 
 The game is this project's own copy, game/ (merged up to CHStarlift 0.24; CHStarlift itself stays the CHGame
 version). Its CHStarlift/CHStarlift.ino, Card.cpp, Synth.cpp and the vendored CHGame library are compiled with
@@ -18,13 +18,13 @@ LIBS = ROOT / "chgame/platform/board/arduino/CHGame/libraries"
 DAT = ROOT / "dist/STARLIFT.DAT"
 BUILD = Path(os.environ.get("GBA_BUILD", HERE / "build"))   # separate folders let two builds run side by side
 OUT = Path(os.environ.get("GBA_OUT", HERE / "out"))
-VERSION = "0.8"                      # Star Lift GBA FS, shown on the title screen
+VERSION = "0.8"                      # StarLift Advance, shown on the title screen
 
 TARGET = ["-target", "arm-linux-musleabi", "-mcpu=arm7tdmi"]
 COMMON = ["-target", "thumb-linux-musleabi", "-mcpu=arm7tdmi"] + ["-std=gnu++17", "-O2", "-w", "-fno-exceptions", "-fno-rtti", "-fno-threadsafe-statics", "-fno-pic",
                    "-ffunction-sections", "-fdata-sections", "-ffreestanding", "-mlong-calls", "-fno-builtin-printf",
                    "-DCHSIM", "-DCH32X035", "-DARDUINO=10800", "-DCHGAME_DEBUG=0", "-DCHGBA=1",
-                   "-DGFX_W=240", "-DGFX_H=160"]          # Star Lift GBA FS: the GBA's whole screen
+                   "-DGFX_W=240", "-DGFX_H=160"]          # StarLift Advance: the GBA's whole screen
 ARM_IWRAM = {"Synth.cpp", "sketch.cpp", "CHGfx_draw.cpp"}      # keep in step with the EXCLUDE_FILE list in src/gba.ld
 ARM_RAMFUNC = '-DRAMFUNC(name)=__attribute__((section(".iwram.text"), noinline, target("arm")))'   # (inc/chgame/RamFunc.h's, in ARM)
 WRAPS = ["_ZN5synth5musicEi", "_ZN5synth3sfxERKN5audio6EffectE", "_ZN5synth6loadedEv"]
@@ -186,7 +186,7 @@ def main():
     fix_header(rom)
     rom_path = OUT / "STARLIFT.gba"
     rom_path.write_bytes(rom)
-    (OUT / f"STARLIFT_FS{VERSION.replace('.', '_')}.gba").write_bytes(rom)   # a copy named for the version
+    (OUT / f"STARLIFT_ADV{VERSION.replace('.', '_')}.gba").write_bytes(rom)   # a copy named for the version
     print(f"image {code} B (code + constants + IWRAM image), card {len(dat)} B, ROM {len(rom)} B -> {rom_path}")
     report(elf)
 

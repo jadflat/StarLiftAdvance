@@ -31,7 +31,7 @@ static inline __attribute__((always_inline, target("arm"))) void blrDone(Rd &rd,
     rd.p = p;
 }
 
-// ---- Star Lift GBA FS: decoded sprites, kept --------------------------------------------------------------------------
+// ---- StarLift Advance: decoded sprites, kept --------------------------------------------------------------------------
 // Decoding the runs costs a few branches each and their short pixel runs a read-modify-write of EWRAM a pixel. So each
 // picture is decoded once, in the colours it is drawn in (the remap) and its flip, into 8-pixel words with a mask (the
 // same nibble order as gfx_fb), kept in EWRAM; drawing it is then a masked word store per 8 pixels, shifted to any x.
