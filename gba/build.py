@@ -18,7 +18,7 @@ LIBS = ROOT / "chgame/platform/board/arduino/CHGame/libraries"
 DAT = ROOT / "dist/STARLIFT.DAT"
 BUILD = Path(os.environ.get("GBA_BUILD", HERE / "build"))   # separate folders let two builds run side by side
 OUT = Path(os.environ.get("GBA_OUT", HERE / "out"))
-VERSION = "0.53"                      # StarLift Advance, shown on the title screen
+VERSION = "0.54"                      # StarLift Advance, shown on the title screen
 
 TARGET = ["-target", "arm-linux-musleabi", "-mcpu=arm7tdmi"]
 COMMON = ["-target", "thumb-linux-musleabi", "-mcpu=arm7tdmi"] + ["-std=gnu++17", "-O2", "-w", "-fno-exceptions", "-fno-rtti", "-fno-threadsafe-statics", "-fno-pic",

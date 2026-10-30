@@ -1,0 +1,36 @@
+# 14-respawn-fade: a new lander does not glide the camera back across the world (a full screen of ground and hill columns
+# rebuilt for ~8 frames, 40-120 ms each). The screen fades to black by the blend registers (10 frames), the camera snaps
+# to the pad while it is black (one rebuild, hidden), then it fades back in (10 frames).
+
+@@ sketch.cpp
+<<<<<<<
+    if (invT) invT--;
+    if (fireCd) fireCd--;
+    if (lst == 2) {
+        if (--deadT == 0) {
+            if (lives <= 1) { lives = 0; gameOver(); return; }
+            lives--;
+            placeLanderOnPad(basePadX);
+            say(MS_NEW_LANDER, 50);
+        }
+        return;
+    }
+=======
+    if (invT) invT--;
+    if (fireCd) fireCd--;
+    static uint8_t respawnIn;                                      // GBA: patch 14 (frames of fade-in left)
+    if (respawnIn) { respawnIn--; gba_hwFade((uint8_t)(respawnIn * 25), 0x0000); }
+    if (lst == 2) {
+        if (deadT <= 10 && deadT > 1 && lives > 1) gba_hwFade((uint8_t)((11 - deadT) * 25), 0x0000);
+        if (--deadT == 0) {
+            if (lives <= 1) { lives = 0; gameOver(); return; }
+            lives--;
+            placeLanderOnPad(basePadX);
+            cam = clampi(LX() - SW / 2, 0, W - SW);                // black now: snap the camera to the pad
+            gba_hwFade(255, 0x0000);
+            respawnIn = 10;
+            say(MS_NEW_LANDER, 50);
+        }
+        return;
+    }
+>>>>>>>
