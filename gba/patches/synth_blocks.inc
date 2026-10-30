@@ -279,6 +279,51 @@ static inline __attribute__((always_inline)) void renderT(int16_t *out, int n, b
 
 void render(int16_t *out, int n) { renderT(out, n, BLK_ASM); }
 
+#ifdef GBA_PSGMUSIC
+// GBA_PSGMUSIC: the music on the PSG instead of in the mix (gba_audio.cpp plays it). seq() runs renderT()'s sequencing
+// (the envelope ticks, the steps, the fade) over a frame's n samples and makes no sound; what the PSG needs is left in
+// gba_mus: the lead's pitch and level (voice 0), the bass's (voice 1) and the drum that was struck. The arpeggio voice
+// has no channel. The levels are the voices' volumes with the music volume and the fade applied, 0-15.
+struct MusFrame { uint8_t on, lvl, newNote, hwStep, duty, bassLvl, drum, mv; uint16_t leadHz, bassHz; };
+extern "C" MusFrame gba_mus;
+MusFrame gba_mus;
+void seq(int n) {
+    uint8_t nn = 0, dk = 0;
+    for (int i = 0; i < n;) {
+        if (++envCnt >= ENV_DIV) { envCnt = 0; envTick(); }
+        if (cur && --stepCnt == 0) {
+            stepCnt = stepLen;
+            auto at = [](int stream, uint8_t p) { return cur[SB_BARS + cur[stream + (p >> 4)] * 16 + (p & 15)]; };
+            const uint8_t b = at(SB_LEAD, pos), dm = at(SB_DRUMS, pos);
+            if (b > 1 && (!ins[0].glide || !v[0].vol || !v[0].gate)) nn = 1;
+            if (dm) dk = (dm & 1) ? 1 : (dm & 2) ? 2 : (dm & 8) ? 3 : (dm & 4) ? 4 : 0;
+            nextStep();
+        }
+        int seg = ENV_DIV - envCnt;
+        if (cur && stepCnt < seg) seg = stepCnt;
+        if (n - i < seg) seg = n - i;
+        envCnt = (uint16_t)(envCnt + seg - 1);
+        if (cur) stepCnt = (uint16_t)(stepCnt - (seg - 1));
+        i += seg;
+    }
+    MusFrame &m = gba_mus;
+    m.on = cur != nullptr;
+    const int mv = (musV * fade) >> 6;                          // 0-15
+    m.mv = (uint8_t)mv;
+    int l = (v[0].vol * mv) >> 7;
+    m.lvl = (uint8_t)(l > 15 ? 15 : l);
+    m.newNote = nn;
+    m.leadHz = (uint16_t)(v[0].inc * 125 >> 10);                // the phase step to Hz at 8004 Hz
+    m.hwStep = (ins[0].volDecay && ins[0].volFloor <= 8) ? (ins[0].volDecay >= 3 ? 1 : ins[0].volDecay == 2 ? 2 : 4) : 0;
+    const int ii = ins[0].idx0;
+    m.duty = ii < 30 ? 2 : ii < 90 ? 1 : 0;                     // a near-sine lead: 50%; brighter ones thinner
+    int bl = (v[1].vol * mv) >> 7;
+    m.bassLvl = (uint8_t)(bl >= 7 ? 4 : bl >= 4 ? 3 : bl >= 2 ? 2 : bl >= 1 ? 1 : 0);
+    m.bassHz = (uint16_t)(v[1].inc * 125 >> 10);
+    m.drum = dk;
+}
+#endif
+
 #ifdef GBA_SNDCHECK
 // The check build: renderRef() is render() with the C voice loops; save() and restore() let gba_audio.cpp run both
 // from the same state.

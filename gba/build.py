@@ -18,7 +18,7 @@ LIBS = ROOT / "chgame/platform/board/arduino/CHGame/libraries"
 DAT = ROOT / "dist/STARLIFT.DAT"
 BUILD = Path(os.environ.get("GBA_BUILD", HERE / "build"))   # separate folders let two builds run side by side
 OUT = Path(os.environ.get("GBA_OUT", HERE / "out"))
-VERSION = "0.49"                      # StarLift Advance, shown on the title screen
+VERSION = "0.53"                      # StarLift Advance, shown on the title screen
 
 TARGET = ["-target", "arm-linux-musleabi", "-mcpu=arm7tdmi"]
 COMMON = ["-target", "thumb-linux-musleabi", "-mcpu=arm7tdmi"] + ["-std=gnu++17", "-O2", "-w", "-fno-exceptions", "-fno-rtti", "-fno-threadsafe-statics", "-fno-pic",
@@ -27,7 +27,7 @@ COMMON = ["-target", "thumb-linux-musleabi", "-mcpu=arm7tdmi"] + ["-std=gnu++17"
                    "-DGFX_W=240", "-DGFX_H=160"]          # StarLift Advance: the GBA's whole screen
 ARM_IWRAM = {"Synth.cpp", "sketch.cpp", "CHGfx_draw.cpp"}      # keep in step with the EXCLUDE_FILE list in src/gba.ld
 ARM_RAMFUNC = '-DRAMFUNC(name)=__attribute__((section(".iwram.text"), noinline, target("arm")))'   # (inc/chgame/RamFunc.h's, in ARM)
-WRAPS = ["_ZN5synth5musicEi", "_ZN5synth3sfxERKN5audio6EffectE", "_ZN5synth6loadedEv"]
+WRAPS = ["_ZN5synth5musicEi", "_ZN5synth3sfxERKN5audio6EffectE", "_ZN5synth6loadedEv", "_ZN5synth6volumeEhh", "_ZN5synth6engineEh"]
 
 
 def run(cmd):

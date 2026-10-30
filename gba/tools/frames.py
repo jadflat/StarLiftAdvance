@@ -94,6 +94,7 @@ callbacks:add("frame", function()
   end
   if n > seen then seen = n end
   if n > {frames} then
+    f:write("BCPOOL resets " .. emu:read32({a("gba_bcResets")}) .. " ents " .. emu:read32({a("gba_bcN")}) .. " used " .. emu:read32({a("gba_bcUsed")}) .. {NL})
     f:write("WHOLE RUN: frames " .. tot .. ", worst " .. (worst / 1000) .. " ms (frame " .. worstAt .. "), over 33.3 ms: " .. over .. {NL})
     local t = "busy histogram (2 ms bins):"
     for h = 0, 200 do if hist[h] then t = t .. " " .. (h * 2) .. "-" .. (h * 2 + 2) .. ":" .. hist[h] end end

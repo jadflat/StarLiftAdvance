@@ -1,0 +1,114 @@
+# 12-sky-fast: the stars and cloud banks of drawSkyObjects, the same pixels for less work (after 04-hills-bg).
+#
+# Stars: each one's hash and its row (a division by 60) depend only on its number: worked out once. Clouds: a bank's row
+# widths were a division a row each (now one per bank row pair), every row went through hl/pset with the hills clip tested
+# a pixel at a time (gfx_hline), and the loop ran from the cartridge (4-5 cycles an instruction). Now a bank is one IWRAM
+# function (cloudBank): the rows above the highest hill top under the bank (gba_clipY, from mn[], or all of them when the
+# bank is above every hill: gba_clipMin, set by hbgPrep) are plain: one span and the dithered ends straight into the row;
+# banks wholly off screen are skipped; the rows a hill covers are drawn the game's way (cloudRowSlow). Checked against the
+# game's own loop every frame (a check build: old and new from the same framebuffer): 0 pixels differ. (The first version
+# of this patch differed from the game's loop in rare rows: an end of a 1-wide row spills a pixel past its columns.)
+
+@@ sketch.cpp
+<<<<<<<
+        const int sc = cam >> 5;
+        for (int i = 0; i < 40; i++) {
+            const uint32_t h = hash((uint32_t)i * 7777u + 1u);
+            const int x = (int)((h & 255) + 512 - (uint32_t)sc) & 255, y = TOP + 2 + (int)((h >> 8) % 60);
+=======
+        const int sc = cam >> 5;
+        if (!gba_starY[0]) for (int i = 0; i < 40; i++) { gba_starH[i] = hash((uint32_t)i * 7777u + 1u); gba_starY[i] = (uint8_t)(TOP + 2 + (int)((gba_starH[i] >> 8) % 60)); }
+        for (int i = 0; i < 40; i++) {
+            const uint32_t h = gba_starH[i];
+            const int x = (int)((h & 255) + 512 - (uint32_t)sc) & 255, y = gba_starY[i];
+>>>>>>>
+
+@@ sketch.cpp
+<<<<<<<
+            for (int r = -hh; r <= hh; r++) {
+                const int w = hw - (hw * r * r) / (hh * hh + 1) - (r < 0 ? -r * 2 : 0);
+                if (w <= 0) continue;
+                const int y = cy + r;
+                hl(cx - w + 3, y, 2 * w - 6, p.clouds);
+                for (int x = cx - w; x < cx - w + 3; x++) if ((x + y) & 1) pset(x, y, p.clouds);
+                for (int x = cx + w - 3; x < cx + w; x++) if ((x + y) & 1) pset(x, y, p.clouds);
+            }
+=======
+            cloudBank(cx, cy, hw, hh, p.clouds);                // GBA: patch 12-sky-fast
+>>>>>>>
+
+@@ sketch.cpp
+<<<<<<<
+static void skyObjects_() {           // GBA: drawSkyObjects() is in hills_bg.inc (patch 04-hills-bg), clipped
+    const Planet &p = PLR;
+=======
+extern "C" { extern const uint8_t *gba_clipY; uint32_t gba_starH[40]; uint8_t gba_starY[40]; int gba_clipMin; }   // (gba_*: EWRAM; gba_clipMin: the highest hill top, set by hbgPrep)
+// (the rows a hill covers: the game's way, clipped)
+static NOINL void cloudRowSlow(int cx, int w, int y, uint8_t cl) {
+    hl(cx - w + 3, y, 2 * w - 6, cl);
+    for (int x = cx - w; x < cx - w + 3; x++) if ((x + y) & 1) pset(x, y, cl);
+    for (int x = cx + w - 3; x < cx + w; x++) if ((x + y) & 1) pset(x, y, cl);
+}
+// One cloud bank (the game's loop, in IWRAM): row y of half width w is a span (x from cx - w + 3 to cx + w - 3) and, each end,
+// the pixels of three where x + y is odd. A row with no hill top under it (mn[d]: the lowest top over x in [cx - d, cx + d);
+// an end of a 1-wide row spills a pixel past that) is drawn straight in; the others as the game did (hl and pset, clipped).
+__attribute__((section(".iwram.text"), noinline, target("arm"), minsize)) static void cloudBank(int cx, int cy, int hw, int hh, uint8_t cl) {
+    if (cx + hw <= 0 || cx - hw >= SW) return;                  // wholly off the screen: nothing the rows draw lands in view
+    const uint8_t *const clip = gba_clipY;
+    uint8_t mn[40];
+    const bool free = clip && cy + hh < gba_clipMin;           // every row is above every hill
+    if (!free) {
+        mn[0] = SH;
+#pragma clang loop unroll(disable)
+        for (int d = 1; d <= hw; d++) {
+            int m = mn[d - 1];
+            if (clip) {
+                const int xl = cx - d, xr = cx + d - 1;
+                if ((unsigned)xl < SW && clip[xl] < m) m = clip[xl];
+                if ((unsigned)xr < SW && clip[xr] < m) m = clip[xr];
+            }
+            mn[d] = (uint8_t)m;
+        }
+    }
+    int qd[7];
+#pragma clang loop unroll(disable)
+    for (int r = 0; r <= hh; r++) qd[r] = (hw * r * r) / (hh * hh + 1);
+    const uint8_t pair = (uint8_t)(cl | cl << 4);
+    const uint32_t quad = pair * 0x01010101u;
+#pragma clang loop unroll(disable)
+    for (int r = -hh; r <= hh; r++) {
+        const int w = hw - qd[r < 0 ? -r : r] - (r < 0 ? -r * 2 : 0);
+        if (w <= 0) continue;
+        const int y = cy + r;
+        if (y >= 0 && (free || y < mn[w < 2 ? 2 : w])) {
+            uint8_t *const row = gfx_fb + y * GFX_FB_STRIDE;
+            int a = cx - w + 3, b = cx + w - 3;
+            if (a < 0) a = 0;
+            if (b > SW) b = SW;
+            if (b > a) {
+                uint8_t *q = row + (a >> 1);
+                if (a & 1) { *q = (uint8_t)((*q & 0x0F) | cl << 4); q++; a++; }
+                int n = (b - a) >> 1;
+#pragma clang loop unroll(disable)
+                for (; n && ((uintptr_t)q & 3); n--) *q++ = pair;
+#pragma clang loop unroll(disable)
+                for (; n >= 4; n -= 4, q += 4) *(uint32_t *)q = quad;
+#pragma clang loop unroll(disable)
+                for (; n; n--) *q++ = pair;
+                if ((b - a) & 1) *q = (uint8_t)((*q & 0xF0) | cl);
+            }
+#pragma clang loop unroll(disable)
+            for (int e = 0; e < 2; e++) {                       // each end's dither: (x + y) odd among its three pixels
+                const int x0 = e ? cx + w - 3 : cx - w;
+#pragma clang loop unroll(disable)
+                for (int x = x0; x < x0 + 3; x++)
+                    if (((x + y) & 1) && (unsigned)x < SW) { uint8_t *q = row + (x >> 1); *q = (uint8_t)((x & 1) ? ((*q & 0x0F) | cl << 4) : ((*q & 0xF0) | cl)); }
+            }
+            continue;
+        }
+        cloudRowSlow(cx, w, y, cl);
+    }
+}
+static void skyObjects_() {           // GBA: drawSkyObjects() is in hills_bg.inc (patch 04-hills-bg), clipped
+    const Planet &p = PLR;
+>>>>>>>

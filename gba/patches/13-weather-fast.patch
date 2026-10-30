@@ -1,0 +1,79 @@
+# 13-weather-fast: the rain-class weather's (rain, drizzle, acid) particle loops in IWRAM: small, with what the game's loops
+# reload every particle (the world's weather, the fall table: the byte stores into wxX/wxY may alias them) kept in
+# registers, and the streaks' three pixels written straight in. The same moves and pixels in the same order; the other
+# weathers keep the game's loops.
+# (The game's sketch runs from the cartridge: 4-5 cycles an instruction; 60-odd instructions a particle, 80 particles.)
+
+@@ sketch.cpp
+<<<<<<<
+static void updateWeather() {
+    const Planet &p = PLR;
+    const int dc = cam - lastCam;
+=======
+// GBA: patch 13-weather-fast. updateWeather's loop for rain, drizzle and acid: y += fl, x -= dx.
+__attribute__((section(".iwram.text"), noinline, target("arm"))) static void wxMoveRain(int dc, int nWx, int fl, int dx) {
+#pragma clang loop unroll(disable)
+    for (int i = 0; i < nWx; i++) {
+        int x = wxX[i] - dc, y = wxY[i] + fl;
+        x -= dx;
+        while (x < 0) x += WXR;
+        while (x >= WXR) x -= WXR;
+        if (y >= SH) { y = TOP; x = rnd(WXR); }
+        if (y < TOP) { y = SH - 1; x = rnd(WXR); }
+        wxX[i] = (uint8_t)x; wxY[i] = (uint8_t)y;
+    }
+}
+
+// a pixel as pset puts it (the picture's bounds, the hills' clip)
+static inline __attribute__((always_inline)) void wxPix(uint8_t *fb, const uint8_t *clip, int x, int y, uint8_t c) {
+    if ((unsigned)x >= SW || (unsigned)y >= SH) return;
+    if (clip && y >= clip[x]) return;
+    uint8_t *b = fb + y * GFX_FB_STRIDE + (x >> 1);
+    *b = (x & 1) ? (uint8_t)((*b & 0x0F) | (c << 4)) : (uint8_t)((*b & 0xF0) | c);
+}
+
+// drawWeather's loop for rain, drizzle and acid: a falling streak, its colours from the table
+__attribute__((section(".iwram.text"), noinline, target("arm"))) static void wxDrawRain(int nWx, const uint8_t *f, int dx) {
+    uint8_t *const fb = gfx_fb;
+    const uint8_t *const clip = gba_clipY;
+    const uint8_t c1 = f[1], c2 = f[2];
+#pragma clang loop unroll(disable)
+    for (int i = 0; i < nWx; i++) {
+        const int x = wxX[i], y = wxY[i];
+        if (x >= SW) continue;
+        wxPix(fb, clip, x, y, c1); wxPix(fb, clip, x + dx, y - 1, c2); wxPix(fb, clip, x + dx, y - 2, c2);
+    }
+}
+
+static void updateWeather() {
+    const Planet &p = PLR;
+    const int dc = cam - lastCam;
+>>>>>>>
+
+@@ sketch.cpp
+<<<<<<<
+    for (int i = 0; i < nWx; i++) {
+        int x = wxX[i] - dc, y = wxY[i];
+        switch (p.weather) {
+=======
+    if (p.weather == WX_RAIN || p.weather == WX_DRIZZLE || p.weather == WX_ACID) wxMoveRain(dc, nWx, FALL[p.weather - WX_RAIN][0], p.weather == WX_RAIN);   // GBA: patch 13-weather-fast
+    else
+    for (int i = 0; i < nWx; i++) {
+        int x = wxX[i] - dc, y = wxY[i];
+        switch (p.weather) {
+>>>>>>>
+
+@@ sketch.cpp
+<<<<<<<
+    for (int i = 0; i < nWx; i++) {
+        const int x = wxX[i], y = wxY[i];
+        if (x >= SW) continue;
+        switch (p.weather) {
+=======
+    if (p.weather == WX_RAIN || p.weather == WX_DRIZZLE || p.weather == WX_ACID) wxDrawRain(nWx, FALL[p.weather - WX_RAIN], p.weather == WX_RAIN);   // GBA: patch 13-weather-fast
+    else
+    for (int i = 0; i < nWx; i++) {
+        const int x = wxX[i], y = wxY[i];
+        if (x >= SW) continue;
+        switch (p.weather) {
+>>>>>>>

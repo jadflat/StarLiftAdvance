@@ -76,9 +76,8 @@ __attribute__((noinline)) static BcEnt *bcMake(const uint8_t *p, uint32_t src, c
     return &e;
 }
 
-// draw rd's picture from the pool (decoding it first if new); false: not possible (no card data), use the run loop
-__attribute__((section(".iwram.text.bc"), noinline, target("arm")))
-static bool bcBlit(const Rd &rd, int w, int h, int x, int y, bool flip, const uint32_t *lut4) {
+// the pool's entry for rd's picture in these colours and flip (decoding it first if new); null: not possible (no card data)
+static inline __attribute__((always_inline)) const BcEnt *bcGet(const Rd &rd, int w, int h, bool flip, const uint32_t *lut4) {
     const uint32_t src = rd.fromCard ? (rd.off | 0x80000000u) : (uint32_t)rd.p;
     uint32_t hs = src * 2654435761u ^ (flip ? 0x9E3779B9u : 0u);
     for (int k = 0; k < 4; k++) hs = (hs ^ lut4[k]) * 16777619u;
@@ -90,14 +89,31 @@ static bool bcBlit(const Rd &rd, int w, int h, int x, int y, bool flip, const ui
     }
     if (!e) {
         const uint8_t *p = rd.fromCard ? card::at(rd.off) : rd.p;                // (the GBA's card is all in ROM, in one piece)
-        if (!p || !(e = bcMake(p, src, lut4, w, h, flip, bucket))) return false;
+        if (!p || !(e = bcMake(p, src, lut4, w, h, flip, bucket))) return nullptr;
     }
+    return e;
+}
+
+// draw rd's picture from the pool (decoding it first if new); false: not possible (no card data), use the run loop
+__attribute__((section(".iwram.text.bc"), noinline, target("arm")))
+static bool bcBlit(const Rd &rd, int w, int h, int x, int y, bool flip, const uint32_t *lut4) {
+    const BcEnt *e = bcGet(rd, w, h, flip, lut4);
+    if (!e) return false;
     const int nw = e->nw, s = (x & 7) * 4, wx = x >> 3;
     int r = y < 0 ? -y : 0, r1 = h;
     if (y + r1 > SH) r1 = SH - y;
     const uint32_t *row = e->data + r * 2 * nw;
     uint32_t *dst = (uint32_t *)gfx_fb + (y + r) * (GFX_FB_STRIDE / 4);
     const uint8_t *const clip = gba_clipY;                                       // (patch 04: behind a hills layer)
+    uint8_t gmin[24], gmax[24];                                                  // per 8 columns: the clip's lowest and highest row
+    const bool fastClip = clip && nw + 1 <= 24;
+    if (fastClip)
+        for (int i = 0; i <= nw; i++) {
+            const unsigned k = (unsigned)(wx + i);
+            uint8_t lo = 255, hi = 0;
+            if (k < (unsigned)(GFX_FB_STRIDE / 4)) for (int j = 0; j < 8; j++) { const uint8_t v = clip[k * 8 + j]; if (v < lo) lo = v; if (v > hi) hi = v; }
+            gmin[i] = lo; gmax[i] = hi;
+        }
 #pragma clang loop unroll(disable)
     for (; r < r1; r++, row += 2 * nw, dst += GFX_FB_STRIDE / 4) {
         uint32_t cd = 0, cm = 0;
@@ -114,14 +130,50 @@ static bool bcBlit(const Rd &rd, int w, int h, int x, int y, bool flip, const ui
             if (clip) {                                                          // only the columns still open at this row
                 const uint8_t *c = clip + k * 8;
                 const int yy = y + r;
-                uint32_t open = 0;
+                if (fastClip && yy >= gmax[i]) continue;                         // all 8 columns closed
+                if (!fastClip || yy >= gmin[i]) {                                // (else all open)
+                    uint32_t open = 0;
 #pragma clang loop unroll(disable)
-                for (int j = 0; j < 8; j++) if (yy < c[j]) open |= 15u << (j * 4);
-                vm &= open;
-                if (!vm) continue;
+                    for (int j = 0; j < 8; j++) if (yy < c[j]) open |= 15u << (j * 4);
+                    vm &= open;
+                    if (!vm) continue;
+                }
             }
             dst[k] = (dst[k] & ~vm) | (vd & vm);
         }
+    }
+    return true;
+}
+
+// StarLift Advance: the picture as a hardware sprite (gfx_gba.cpp's gba_objAdd) instead of pixels in the framebuffer: the
+// pool's decoded rows are already tile rows (8 pixels, the same nibble order), so a sprite is a copy of them into OBJ tiles
+// in the shape's order (the colours are the game palette's, OBJ palette 0 has it too). false: no room, draw it as pixels.
+volatile uint32_t *gba_objAdd(int shape, int size, int tiles, int x, int y, int prio);
+static bool bcObj(const Rd &rd, int w, int h, int x, int y, bool flip, const uint32_t *lut4, int prio) {
+    static const uint8_t kShape[12][4] = {                                      // shape, size, tiles across, tiles down
+        {0, 0, 1, 1}, {1, 0, 2, 1}, {2, 0, 1, 2}, {0, 1, 2, 2}, {1, 1, 4, 1}, {2, 1, 1, 4},
+        {1, 2, 4, 2}, {2, 2, 2, 4}, {0, 2, 4, 4}, {1, 3, 8, 4}, {2, 3, 4, 8}, {0, 3, 8, 8} };
+    const int nw = (w + 7) >> 3, nh = (h + 7) >> 3;
+    const BcEnt *e = bcGet(rd, w, h, flip, lut4);
+    if (!e) return false;
+    for (int c0 = 0; c0 < nw; c0 += 8) {                                        // (wider than 8 tiles: one sprite a chunk of 8)
+        const int cw = nw - c0 < 8 ? nw - c0 : 8;
+        int best = -1;
+        for (int k = 0; k < 12; k++)
+            if (kShape[k][2] >= cw && kShape[k][3] >= nh && (best < 0 || kShape[k][2] * kShape[k][3] < kShape[best][2] * kShape[best][3])) best = k;
+        if (best < 0) return false;
+        const int tw = kShape[best][2], th = kShape[best][3];
+        volatile uint32_t *t = gba_objAdd(kShape[best][0], kShape[best][1], tw * th, x + c0 * 8, y, prio);
+        if (!t) return false;
+        for (int ty = 0; ty < th; ty++)
+            for (int tx = 0; tx < tw; tx++) {
+                if (tx >= cw || ty * 8 >= h) { for (int k = 0; k < 8; k++) *t++ = 0; continue; }        // (outside the picture: clear)
+                const uint32_t *src = e->data + ty * 8 * 2 * nw + c0 + tx;
+                const int rows = h - ty * 8 < 8 ? h - ty * 8 : 8;
+                int k = 0;
+                for (; k < rows; k++, src += 2 * nw) *t++ = *src;
+                for (; k < 8; k++) *t++ = 0;
+            }
     }
     return true;
 }

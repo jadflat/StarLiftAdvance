@@ -98,16 +98,18 @@ __attribute__((noinline)) static void hbgDraw() {
 // once a frame, when the sky is cleared (all four layers' tops known): the clip rows, the near hills' columns (patch
 // 01's slgCol, as slgColumns made them) and how far down the picture is see-through (the near hills' highest top)
 SLG_IWRAM static int hbgPrep() {
-    int low = TOP, p2 = topA[2][0];
+    int low = TOP, p2 = topA[2][0], hi0 = 255;
 #pragma clang loop unroll(disable)
     for (int x = 0; x < SW; x++) {
         const int a = topA[0][x], b = topA[1][x], c = topA[2][x], d = topA[3][x];
         const int m2 = c < d ? c : d, m1 = b < m2 ? b : m2, m0 = a < m1 ? a : m1;
         hbgClipA[0][x] = (uint8_t)m0; hbgClipA[1][x] = (uint8_t)m1; hbgClipA[2][x] = (uint8_t)m2;
         if (m2 > low) low = m2;
+        if (m0 < hi0) hi0 = m0;
         slgCol[0][x] = slgWord(c, d, p2 - c);
         p2 = c;
     }
+    gba_clipMin = hi0;                           // (patch 12: the clouds' rows above this are all open)
     return low;
 }
 

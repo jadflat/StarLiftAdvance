@@ -98,7 +98,7 @@ asm(".section .iwram.text,\"ax\"\n"
 extern "C" void gba_irq();
 extern "C" IWRAM_TEXT void gba_irq_c(uint32_t lr) {
     const uint16_t f = REG_IF & REG_IE;
-    if (f & 16) gba_pcRing[gba_pcN++ & 4095] = lr - 4;
+    if (f & 16) { gba_pcRing[gba_pcN++ & 4095] = lr - 4; gba_psgTick(); }
     if (f & 1) { gba_vblank(); gba_audioVblank(); }
     REG_IF = f;
     BIOS_IF |= f;

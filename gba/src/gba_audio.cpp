@@ -18,9 +18,18 @@
 // every VBlank, and counts the VBlanks that differ (gba_sndBad).
 #include <Arduino.h>
 #include "hw.h"
+#include <chgame/Audio.h>
+#ifndef GBA_PSG
+#define GBA_PSG 1
+#endif
+#if defined(GBA_PSGMUSIC) && !GBA_PSG
+#error GBA_PSGMUSIC needs GBA_PSG
+#endif
 
 namespace synth { uint8_t sample(); void begin(); }
-namespace blocks { void render(int16_t *out, int n); }
+namespace blocks { void render(int16_t *out, int n); void seq(int n); }
+struct MusFrame { uint8_t on, lvl, newNote, hwStep, duty, bassLvl, drum, mv; uint16_t leadHz, bassHz; };
+extern "C" MusFrame gba_mus;
 
 #define REG_DMA2SAD   REG32(0x040000C8)
 #define REG_DMA2DAD   REG32(0x040000CC)
@@ -29,7 +38,7 @@ namespace blocks { void render(int16_t *out, int n); }
 #define REG_FIFO_B    REG32(0x040000A4)
 
 enum { N = 134, Q = 4 * N, PERIOD = 524, PAD = 32, KNEE = 220, LIM = 254 };
-enum : uint16_t { SND_H = 0x3304, SND_RESET = 0x8800 };   // A 100%, B 50%, both speakers, timer 0; | reset both FIFOs
+enum : uint16_t { SND_H = 0x3306, SND_RESET = 0x8800 };   // A 100%, B 50%, PSG 100%, both speakers, timer 0; | reset both FIFOs
 alignas(4) int8_t gba_audA[2][Q + PAD], gba_audB[2][Q + PAD];   // EWRAM (gba.ld: .bss.gba_*)
 int16_t gba_audX[N];
 uint8_t gba_audCur;                             // the buffer mixed last (tools/sounddump.py reads it)
@@ -208,9 +217,176 @@ static void sndSelfTest() {                     // gba_audMix against mixC: loud
 }
 #endif
 
+
+// ---- the effects and the engine on the PSG ----------------------------------------------------------------------------
+// The game's effect table (steps of pitch, sweep and length, flags) plays on the hardware channels instead of in the
+// software mix: a square on channel 2, a sine on the wave channel (WOBBLE effects, with their warble), noise on
+// channel 4 (NOISE effects, and the engine's rumble when no effect uses it). Steps and sweeps advance every 8 ms from
+// the 1 kHz tick (gba_psgTick), the rate envTick() ran them at. The music stays in the software mix (unless GBA_PSGMUSIC). The game's
+// synth::sfx/engine calls are wrapped below and never reach the synth, so its effects voice and engine pass stay idle
+// (the mix skips them). GBA_PSG=0 builds without all this.
+#if GBA_PSG
+#define REG_SND1H REG16(0x04000062)
+#define REG_SND1X REG16(0x04000064)
+#define REG_SND2L REG16(0x04000068)
+#define REG_SND2H REG16(0x0400006C)
+#define REG_SND3L REG16(0x04000070)
+#define REG_SND3H REG16(0x04000072)
+#define REG_SND3X REG16(0x04000074)
+#define REG_SND4L REG16(0x04000078)
+#define REG_SND4H REG16(0x0400007C)
+namespace {
+enum { K_SQ, K_WAVE, K_NOISE, ENG_S = 10 };
+struct Psg { const audio::Step *st; uint8_t n, i, prio, kind, soft, ticks, tot, wph, cvol, engT, engV, engCur, fxV, div; int base, d; };
+Psg ps = { nullptr, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 255, 4, 0, 0, 0 };
+int psgSin(uint8_t x) { const int a = x & 127; const int v = a * (128 - a) >> 5; return (x & 128) ? -v : v; }   // a sine's parabola, +-128
+
+void psgNoiseFreq(int f, bool trig) {           // the noise clock: one new level a cycle of f, 524288 / (r * 2^(s+1))
+    const int d = 524288 / (f < 8 ? 8 : f);
+    int s = 0;
+    while (s < 13 && d >= 8 << (s + 1)) s++;
+    int r = d >> (s + 1);
+    if (r < 1) r = 1; else if (r > 7) r = 7;
+    REG_SND4H = (uint16_t)(r | s << 4 | (trig ? 0x8000 : 0));
+}
+void psgKill(int kind) {
+    if (kind == K_SQ) REG_SND2L = 0;
+    else if (kind == K_WAVE) REG_SND3H = 0;
+    else { REG_SND4L = 0; ps.engCur = 255; }
+}
+void psgPitch(bool trig) {                      // the channel's pitch (and, on a trigger, its start)
+    int f = ps.base >> 4;
+    if (ps.kind == K_WAVE) f += f * psgSin(ps.wph) >> 9;
+    if (ps.kind == K_NOISE) { psgNoiseFreq(f, trig); return; }
+    const int sh = ps.kind == K_WAVE ? 65536 : 131072;
+    int x = 2048 - sh / (f < 64 ? 64 : f);
+    if (x < 0) x = 0;
+    const uint16_t w = (uint16_t)(x | (trig ? 0x8000 : 0));
+    if (ps.kind == K_SQ) REG_SND2H = w; else REG_SND3X = w;
+}
+void psgStep() {
+    if (ps.i >= ps.n) { psgKill(ps.kind); ps.n = 0; ps.prio = 0; return; }
+    const audio::Step &s = ps.st[ps.i];
+    ps.ticks = ps.tot = (uint8_t)((s.ms * 62u >> 8) + 1);
+    ps.base = s.hz * 320;                       // Hz * 16
+    ps.d = s.endHz ? (s.endHz * 320 - ps.base) / ps.ticks : 0;
+    ps.cvol = 0;
+    if (!s.hz) { psgKill(ps.kind); return; }
+    const int fv = ps.fxV;
+    int v = ((ps.soft ? 44 : ps.kind == K_WAVE ? 120 : 100) * fv * 17) >> 9;   // the synth's amplitude * volume * gain
+    if (ps.kind == K_NOISE) v = v * 3 >> 2;
+    if (v > 15) v = 15;
+    if (!v && fv) v = 1;
+    if (!fv) { psgKill(ps.kind); return; }
+    ps.cvol = (uint8_t)v;
+    if (ps.kind == K_SQ) { REG_SND2L = (uint16_t)(0x0080 | v << 12); psgPitch(true); }   // 50% duty
+    else if (ps.kind == K_WAVE) { REG_SND3H = fv == 4 ? 0x2000 : fv == 3 ? 0x8000 : fv == 2 ? 0x4000 : 0x6000; psgPitch(true); }
+    else {                                      // a burst that dies away: the hardware envelope, a step every n/64 s
+        int st = ((ps.tot * 8 * 64 / 1000) + v / 2) / v;
+        if (st < 1) st = 1; else if (st > 7) st = 7;
+        REG_SND4L = (uint16_t)(v << 12 | st << 8);
+        psgPitch(true);
+    }
+}
+void psgTick8() {
+    if (ps.n) {
+        ps.base += ps.d;
+        ps.wph += 46;                           // a fast warble, about 22 Hz
+        if (--ps.ticks == 0) { ps.i++; psgStep(); }
+        else if (ps.base > 0 && ps.cvol) psgPitch(false);
+        return;
+    }
+    if (ps.engV < ps.engT) ps.engV = ps.engT - ps.engV > 24 ? ps.engV + 24 : ps.engT;      // spools up fast, down slower
+    else if (ps.engV > ps.engT) ps.engV = ps.engV - ps.engT > 10 ? ps.engV - 10 : ps.engT;
+    int v = (ps.engV * ps.fxV * 5) >> 9;
+    if (ps.engV && ps.fxV && !v) v = 1;
+    if (v > 15) v = 15;
+    if (v != ps.engCur) {
+        ps.engCur = (uint8_t)v;
+        if (!v) REG_SND4L = 0;
+        else { REG_SND4L = (uint16_t)(v << 12); REG_SND4H = (uint16_t)(1 | ENG_S << 4 | 0x8000); }   // deep, slow noise: the one-pole low-pass
+    }
+}
+void psgInit() {
+    REG_SND3L = 0x40;                           // play bank 1: the wave RAM writes go to bank 0
+    for (int i = 0; i < 8; i++) {               // 32 4-bit sine samples, the high nibble first
+        int n[4];
+        for (int k = 0; k < 4; k++) n[k] = 8 + (psgSin((uint8_t)((i * 4 + k) * 8)) * 7 >> 7);
+        REG16(0x04000090 + 2 * i) = (uint16_t)(n[0] << 4 | n[1] | n[2] << 12 | n[3] << 8);
+    }
+    REG_SND3L = 0x80;                           // bank 0 plays, on
+    REG_SND3H = 0;
+}
+}  // namespace
+#ifdef GBA_PSGMUSIC
+// The music on the PSG (GBA_PSGMUSIC: no PCM mix at all). Once a frame blocks::seq() steps the synth's sequencer without
+// mixing and leaves in gba_mus what each voice needs: the lead on channel 1 (a square; a trigger on a new note, the
+// hardware envelope for notes that die away, a trigger again when its level moves by 2 or more, for the rest), the bass
+// on channel 3 (the sine; its volume steps, it gives the channel to a WOBBLE effect and takes it back with a trigger),
+// the drums on channel 4 (a noise burst each, cut by the length counter; NOISE effects and the engine keep the channel).
+namespace {
+uint8_t mCur, mEnv, mBass;
+void musApply() {
+    const MusFrame &m = gba_mus;
+    if (!m.on) {
+        if (mCur) { REG_SND1H = 0; mCur = 0; }
+        if (mBass) { if (!(ps.n && ps.kind == K_WAVE)) REG_SND3H = 0; mBass = 0; }
+        return;
+    }
+    int hz = m.leadHz < 64 ? 64 : m.leadHz;
+    int x = 2048 - 131072 / hz;
+    if (x < 0) x = 0;
+    const uint16_t duty = (uint16_t)(m.duty == 2 ? 0x80 : m.duty == 1 ? 0x40 : 0);
+    const int l = m.lvl;
+    if (!l) { if (mCur) { REG_SND1H = 0; mCur = 0; } }
+    else if (m.newNote || !mCur || (!mEnv && (l - mCur >= 2 || mCur - l >= 2))) {
+        mEnv = m.newNote ? m.hwStep : 0;
+        mCur = (uint8_t)l;
+        REG_SND1H = (uint16_t)(duty | l << 12 | mEnv << 8);
+        REG_SND1X = (uint16_t)(x | 0x8000);
+    } else REG_SND1X = (uint16_t)x;
+    if (ps.n && ps.kind == K_WAVE) mBass = 0;               // the effect has the wave channel
+    else if (!m.bassLvl) { if (mBass) { REG_SND3H = 0; mBass = 0; } }
+    else {
+        int bh = m.bassHz < 33 ? 33 : m.bassHz;
+        int bx = 2048 - 65536 / bh;
+        if (bx < 0) bx = 0;
+        REG_SND3H = m.bassLvl == 4 ? 0x2000 : m.bassLvl == 3 ? 0x8000 : m.bassLvl == 2 ? 0x4000 : 0x6000;
+        REG_SND3X = (uint16_t)(bx | (mBass ? 0 : 0x8000));
+        mBass = 1;
+    }
+    if (m.drum && !(ps.n && ps.kind == K_NOISE) && !(ps.engV && ps.fxV)) {
+        static const uint8_t lv[5] = { 0, 15, 12, 6, 5 }, ms[5] = { 0, 90, 60, 80, 25 }, sr[5] = { 0, 10 << 4 | 2, 4 << 4 | 3, 1 << 4 | 1, 2 << 4 | 1 };
+        int v = lv[m.drum] * m.mv / 15;
+        if (!v && m.mv) v = 1;
+        if (v) {
+            REG_SND4L = (uint16_t)(v << 12 | 1 << 8 | (64 - (ms[m.drum] * 256 / 1000)));
+            REG_SND4H = (uint16_t)(sr[m.drum] | (m.drum >= 3 ? 8 : 0) | 0xC000);
+            ps.engCur = 255;
+        }
+    }
+}
+}  // namespace
+#endif
+IWRAM_TEXT void gba_psgTick() { if ((++ps.div & 7) == 0) psgTick8(); }
+#else
+void gba_psgTick() {}
+#endif
+
 void gba_audioInit() {
     REG_SOUNDCNT_X = 0x0080;                    // master enable
-    REG_SOUNDCNT_L = 0;
+    #ifdef GBA_PSGMUSIC
+    REG_SOUNDCNT_L = 0xFF77;                    // PSG channels 1-4 (music, effects, engine) to both speakers, master volume 7
+    REG_SOUNDCNT_H = 0x0002;                    // the PSG at 100%, no Direct Sound: the PCM mixer is off
+    REG_SOUNDCNT_X = 0x0080;
+    REG_SND1H = 0;
+    psgInit();
+    return;
+#endif
+    REG_SOUNDCNT_L = GBA_PSG ? 0xEE77 : 0;      // PSG channels 2-4 (effects, engine) to both speakers, master volume 7
+#if GBA_PSG
+    psgInit();
+#endif
     REG_SOUNDCNT_H = SND_H | SND_RESET;
     REG_TM0CNT_H = 0;
     REG_TM0CNT_L = (uint16_t)(65536 - PERIOD);
@@ -225,6 +401,14 @@ volatile uint32_t gba_audUs;                    // total time spent mixing, for 
 
 IWRAM_TEXT void gba_audioVblank() {
     const uint32_t t0 = micros();
+#ifdef GBA_PSGMUSIC
+    const uint32_t o = irq_off();               // the 1 kHz tick writes the same channels
+    blocks::seq(N);
+    musApply();
+    irq_restore(o);
+    gba_audUs += micros() - t0;
+    return;
+#endif
     REG_DMA1CNT_H = 0; REG_DMA2CNT_H = 0;
     REG_TM0CNT_H = 0;
     REG_SOUNDCNT_H = SND_H | SND_RESET;         // empty both FIFOs: what is left was read past the end of the last buffer
@@ -251,7 +435,6 @@ IWRAM_TEXT void gba_audioVblank() {
 }
 
 // ---- keep the interrupt out of the synth while the game changes its state ---------------------------------------------
-namespace audio { struct Effect; }
 extern "C" {
 void _ZN5synth5musicEi(int);
 void _ZN5synth3sfxERKN5audio6EffectE(const void *);
@@ -259,7 +442,34 @@ void _ZN5synth6loadedEv();
 void __real__ZN5synth5musicEi(int);
 void __real__ZN5synth3sfxERKN5audio6EffectE(const void *);
 void __real__ZN5synth6loadedEv();
+void __real__ZN5synth6volumeEhh(uint8_t, uint8_t);
 void __wrap__ZN5synth5musicEi(int s) { const uint32_t o = irq_off(); __real__ZN5synth5musicEi(s); irq_restore(o); }
+#if GBA_PSG
+void __wrap__ZN5synth3sfxERKN5audio6EffectE(const void *p) {
+    const audio::Effect &e = *(const audio::Effect *)p;
+    const uint32_t o = irq_off();
+    const uint8_t prio = e.flags & 15;
+    if (!ps.n || prio >= ps.prio) {
+        if (ps.n) psgKill(ps.kind);
+        ps.st = e.steps; ps.n = e.n; ps.i = 0; ps.prio = prio; ps.soft = (e.flags & audio::SOFT) != 0; ps.wph = 0;
+        ps.kind = (e.flags & 0x80) ? K_NOISE : (e.flags & 0x40) ? K_WAVE : K_SQ;   // synth::NOISE, synth::WOBBLE
+        psgStep();
+    }
+    irq_restore(o);
+}
+void __wrap__ZN5synth6engineEh(uint8_t level) { ps.engT = level; }
+void __wrap__ZN5synth6volumeEhh(uint8_t m, uint8_t f) {
+    const uint32_t o = irq_off();
+    __real__ZN5synth6volumeEhh(m, f);
+    ps.fxV = f; ps.engCur = 255;
+    if (ps.n) { const int k = ps.kind; if (!f) psgKill(k); }
+    irq_restore(o);
+}
+#else
+void __real__ZN5synth6engineEh(uint8_t);
+void __wrap__ZN5synth6engineEh(uint8_t l) { __real__ZN5synth6engineEh(l); }
+void __wrap__ZN5synth6volumeEhh(uint8_t m, uint8_t f) { __real__ZN5synth6volumeEhh(m, f); }
 void __wrap__ZN5synth3sfxERKN5audio6EffectE(const void *e) { const uint32_t o = irq_off(); __real__ZN5synth3sfxERKN5audio6EffectE(e); irq_restore(o); }
+#endif
 void __wrap__ZN5synth6loadedEv() { const uint32_t o = irq_off(); __real__ZN5synth6loadedEv(); irq_restore(o); }
 }

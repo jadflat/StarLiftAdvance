@@ -74,6 +74,7 @@ uint16_t gba_grad[2][161];                  // the sky's line colours, per set (
 static void skyStart(const uint16_t *g);
 static void mosaicStep();
 static void beamShow();
+static void objShow();
 static uint8_t s_g1x[2];                    // BG1's scroll per set (see gba_groundScroll)
 static uint8_t s_hx[2][2], s_hOn[2];        // the hills' layers (BG2 far, BG3 mid): scroll per set, shown or not (gba_hillScroll)
 static uint8_t s_g1xNext, s_hxNext[2], s_hOnNext;   // the frame being drawn's: given to its set by present() (a frame is
@@ -90,6 +91,7 @@ void gba_vblank() {
     REG_BG0CNT = (uint16_t)((s_shown ? 2 : 0) << 2 | 31 << 8 | 0x40);  // tile set A (char block 0) or B (2), map at 31, mosaic on
     mosaicStep();
     beamShow();
+    objShow();
     REG16(0x04000014) = s_g1x[s_shown];                              // BG1HOFS
     REG16(0x04000018) = s_hx[s_shown][0];                           // BG2HOFS: the far hills
     REG16(0x0400001C) = s_hx[s_shown][1];                           // BG3HOFS: the mid hills
@@ -168,12 +170,53 @@ static void beamShow() {                                         // at the flip:
     s_beamN[s_back] = 0;                                         // the new back set starts with none
 }
 
+// ---- picture sprites (patch 05-structure-obj): pictures the game draws as pixels, shown as OBJ sprites instead. Like the
+// beams, made while the frame is drawn and shown with it, but in a buffer of their own (a list and 128 tiles) that present()
+// hands to the set it fills: the back set can change under a frame being drawn (the flip of the one before), the buffer not.
+// OAM 12 up (the beams have 0-11), OBJ tiles 768 up (the beams have the first 768). Later adds are in front of earlier ones
+// (a lower OAM number), as pixels drawn later would be. A buffer the shown frame still uses is never written (a frame that
+// replaced one not yet shown): those pictures are drawn as pixels.
+enum { OBJ_MAX = 12, OBJ_OAM = 12, OBJ_T0 = 768, OBJ_TS = 128 };
+struct ObjSpr { uint16_t a0, a1, a2; };
+static ObjSpr s_obj[2][OBJ_MAX];
+static uint8_t s_objN[2], s_objTiles[2], s_objCur;      // per buffer: sprites, tiles used; the buffer being drawn into
+static uint32_t s_objStamp[2] = { ~0u, ~0u };           // the frame (gba_dbgN) each buffer's contents are from
+static uint8_t s_setN[2], s_setBuf[2] = { 1, 1 };       // per tile set: its sprites and the buffer they are in
+extern volatile uint32_t gba_dbgN;
+volatile uint32_t *gba_objAdd(int shape, int size, int tiles, int x, int y, int prio) {   // the tiles to fill, or null: no room
+    const int b = s_objCur;
+    if (s_objStamp[b] != gba_dbgN) {
+        if (b == s_setBuf[s_shown] && s_setN[s_shown]) return nullptr;
+        s_objStamp[b] = gba_dbgN; s_objN[b] = s_objTiles[b] = 0;
+    }
+    const int n = s_objN[b];
+    if (n >= OBJ_MAX || s_objTiles[b] + tiles > OBJ_TS) return nullptr;
+    const int t = OBJ_T0 + b * OBJ_TS + s_objTiles[b];
+    s_obj[b][n] = { (uint16_t)((y & 255) | 0x1000 | shape << 14), (uint16_t)((x & 511) | size << 14), (uint16_t)(t | prio << 10) };   // (mosaic on)
+    s_objN[b] = (uint8_t)(n + 1); s_objTiles[b] = (uint8_t)(s_objTiles[b] + tiles);
+    return (volatile uint32_t *)(0x06010000 + t * 32);
+}
+static void objPresent() {                                      // the frame drawn goes with the set present() fills
+    s_setN[s_back] = s_objStamp[s_objCur] == gba_dbgN ? s_objN[s_objCur] : 0;
+    s_setBuf[s_back] = s_objCur;
+    s_objCur ^= 1;
+}
+static void objShow() {                                          // at the flip: the shown set's sprites
+    const int n = s_setN[s_shown];
+    for (int i = 0; i < OBJ_MAX; i++) {
+        volatile uint16_t *o = OAM + (OBJ_OAM + i) * 4;
+        if (i >= n) { o[0] = 0x0200; continue; }
+        const ObjSpr &q = s_obj[s_setBuf[s_shown]][n - 1 - i];
+        o[0] = q.a0; o[1] = q.a1; o[2] = q.a2;
+    }
+}
+
 // the mosaic: blocks of up to 5 pixels that shrink back to 1 over the given frames (at each shown frame)
 static uint8_t s_mosaicT, s_mosaicLen;
 void gba_mosaic(uint8_t frames) { s_mosaicT = s_mosaicLen = frames; }
 static void mosaicStep() {
     const int m = s_mosaicT ? (s_mosaicT * 4 + s_mosaicLen - 1) / s_mosaicLen : 0;   // 4 .. 1 .. 0 (block size - 1)
-    REG_MOSAIC = (uint16_t)(m | m << 4);
+    REG_MOSAIC = (uint16_t)(m | m << 4 | m << 8 | m << 12);   // (backgrounds, then sprites)
     if (s_mosaicT) s_mosaicT--;
 }
 __attribute__((target("arm"))) static uint16_t mix555(uint16_t a, uint16_t b, int t) {     // a + (b - a) * t / 256, per 5-bit channel
@@ -319,6 +362,18 @@ static void waitFlip() {
 
 // The framebuffer is copied into the back tile set at once, so it is free the moment present() returns: nothing waits for the
 // flip (a frame the VBlank has not shown yet is simply replaced by the newer one).
+// A fade to black (rgb565 0) or white by the blend unit: BLDY is the level (0-16), all layers and the backdrop fade.
+// (The semi-transparent beams keep their own blend.) Other screen modes use BLDCNT for alpha: the palette fade there.
+void gba_hwFade(uint8_t amount, uint16_t rgb565) {
+#if GBA_NATIVE
+    const uint32_t lv = ((uint32_t)amount * 16 + 127) / 255;
+    REG_BLDCNT = (uint16_t)(0x3F | (lv ? (rgb565 ? 0x80 : 0xC0) : 0) | 0x0F00 | 0x2000);
+    REG_BLDY = (uint16_t)lv;
+#else
+    gfx_setFade(amount, rgb565);
+#endif
+}
+
 static void present() {
     uint16_t out[16];
     gfx__paletteTake(out);                  // the staged palette applies from here
@@ -334,6 +389,9 @@ static void present() {
     s_g1x[s_back] = s_g1xNext;                                      // this frame's layer settings go with its tiles
     s_hx[s_back][0] = s_hxNext[0]; s_hx[s_back][1] = s_hxNext[1]; s_hOn[s_back] = s_hOnNext;
     s_hOnNext = 0;                                                  // (the next frame shows the hills only if it draws them)
+#endif
+#if GBA_NATIVE
+    objPresent();
 #endif
     convert();
     gba_convUs += micros() - c0;

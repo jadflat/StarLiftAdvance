@@ -75,5 +75,6 @@ static inline void irq_restore(uint32_t o) { REG_IME = (uint16_t)o; }
 
 extern volatile uint8_t gba_flipPending;       // gfx_gba.cpp: a finished frame waits for the next VBlank
 void gba_vblank();                             // gfx_gba.cpp: flip the page, load the palette
+void gba_psgTick();                            // audio.cpp: the effects on the PSG, called from the 1 kHz tick
 void gba_audioVblank();                        // audio.cpp: restart the sample DMA, mix the next buffer
 void gba_audioInit();

@@ -28,7 +28,14 @@ static GFX_INLINE void oldSpanBody(uint8_t *row, int x0, int x1, uint8_t c) {
 =======
     if (gba_clipY) {
         uint8_t *row = rowPtr(y);
-        for (; x < x1; x++) if (y < gba_clipY[x]) spanBody(row, x, x + 1, (uint8_t)(c & 0x0F));
+        const uint8_t cc = (uint8_t)(c & 0x0F);                          // (runs of open columns: one span each, not one a pixel)
+        while (x < x1) {
+            if (y >= gba_clipY[x]) { x++; continue; }
+            int e = x + 1;
+            while (e < x1 && y < gba_clipY[e]) e++;
+            spanBody(row, x, e, cc);
+            x = e;
+        }
         return;
     }
     spanBody(rowPtr(y), x, x1, (uint8_t)(c & 0x0F));

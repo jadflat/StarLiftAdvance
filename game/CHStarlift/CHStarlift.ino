@@ -119,6 +119,7 @@ enum { ESHOTS = 12, PARTS = 32, WXN = 48 * (GFX_W + 32) / 160, CRITS = 6, MEN = 
 #ifdef CHGBA                                       // StarLift Advance: the GBA's extras (gba/src)
 uint8_t gba_shoulders();                           // L (1) and R (2) held
 void gba_mosaic(uint8_t frames);                   // the picture breaks into blocks for a moment, settling back
+void gba_hwFade(uint8_t amount, uint16_t rgb565);  // a fade to black or white by the blend registers (no palette rebuild)
 #endif
 // the screen: the CHGame board's 128x128, or another size the library is built for (StarLift Advance: 240x160)
 enum { SW = GFX_W, SH = GFX_H, WXR = SW + 32 > 255 ? 255 : SW + 32 };   // WXR: the weather's band across (it wraps)
@@ -489,6 +490,9 @@ static void genStage() {
     wxLvl = 3;                                                     // a perf test: the worst weather
 #endif ticket = 0; tubeT = 0;
     memset(crit, 0, sizeof crit);
+#ifdef SL_STAGESEL
+    { const int cx = basePadX + 20 + (basePadX < W / 2 ? 160 : -160); crit[0] = { (int16_t)cx, (int16_t)groundAt(cx), 1, 4, 0 }; }   // (testing: a cow to lift, near the base)
+#endif
 }
 
 // ---- effects ------------------------------------------------------------------------------------------------------
@@ -1377,10 +1381,22 @@ static void drawSkyObjects() {
         break;
     }
     case SK_AURORA:                                             // curtains of light, shimmering
-        for (int x = 0; x < SW; x++) {
+        for (int x = 0; x < SW; x += 4) {                       // (four columns at a time: the sums once, the bright edge filled, the checker below)
             const int wx = x + (cam >> 5), top = TOP + 6 + (isin(wx * 3 + frameNo) >> 5) + (isin(wx * 7 - frameNo * 2) >> 6);
             const int len = 10 + (isin(wx * 5 + frameNo / 2) >> 5);
-            for (int y = top; y < top + len; y++) if (((x + y + (frameNo >> 1)) & 1) == 0 || y < top + 3) pset(x, y, (y - top) < 4 ? C_GREEN : C_ACC);
+            if (top < 0 || top + len > SH) {                    // (off the picture: the careful way)
+                R(x, top, 4, 3, C_GREEN);
+                for (int y = top + 3; y < top + len; y++) { const int o = (y + (frameNo >> 1)) & 1; const uint8_t c = y - top < 4 ? C_GREEN : C_ACC; pset(x + o, y, c); pset(x + 2 + o, y, c); }
+                continue;
+            }
+            uint8_t *b = gfx_fb + top * GFX_FB_STRIDE + (x >> 1);   // straight into the two bytes of the four columns
+            const uint8_t g2 = (uint8_t)(C_GREEN << 4 | C_GREEN);
+            b[0] = b[1] = g2; b += GFX_FB_STRIDE; b[0] = b[1] = g2; b += GFX_FB_STRIDE; b[0] = b[1] = g2; b += GFX_FB_STRIDE;
+            for (int y = top + 3; y < top + len; y++, b += GFX_FB_STRIDE) {
+                const uint8_t c = y - top < 4 ? C_GREEN : C_ACC;
+                if ((y + (frameNo >> 1)) & 1) { b[0] = (uint8_t)((b[0] & 0x0F) | c << 4); b[1] = (uint8_t)((b[1] & 0x0F) | c << 4); }
+                else { b[0] = (uint8_t)((b[0] & 0xF0) | c); b[1] = (uint8_t)((b[1] & 0xF0) | c); }
+            }
         }
         break;
     }
@@ -1636,6 +1652,17 @@ static void drawGore() {
     }
 }
 
+#ifdef SL_FPS
+static void drawFps() {                                          // (testing) frames a second over the last 16, and % of the 30 fps target
+    static uint32_t t0, acc; static uint8_t n; static uint16_t f10 = 300;
+    const uint32_t now = micros(); acc += now - t0; t0 = now;
+    if (++n == 16) { f10 = (uint16_t)(160000000u / (acc ? acc : 1)); acc = 0; n = 0; }
+    char b[16];
+    fmt(b, "", f10 / 10, " FPS ", f10 * 10 / 30, "%");
+    R(1 + UX, TOP + 1, text35Width(b) + 2, 7, C_INK); text35(2 + UX, TOP + 2, b, f10 >= 290 ? C_GREEN : f10 >= 250 ? C_GOLD : C_RED);
+}
+#endif
+
 static void drawPointer() {                                 // an arrow at the edge of the screen: the base when full, else the nearest colonist
     if (state != PLAY || lst == 2 || !(frameNo & 8)) return;
     int tx = -1;
@@ -1785,9 +1812,9 @@ static void updateCritters() {
                 c.y = (int16_t)(c.y + clampi(LY() + 22 - c.y, -1, 4));       // winched up a little, then along under the lander
                 if (absi(c.x - basePadX - 20) < 24) c.kind = 7;               // over the base: let down
             } else if (c.kind == 7) { c.x = (int16_t)LX(); if ((c.t & 3) == 0) c.y++; }   // slowly down the rope, still under the lander
-            else if (c.t / 2 >= absi(c.x - doorX) && patT) { if (--patT == 30) sfx(S_MOO); c.t--; }   // a pat on the head first
+            else if (c.t / 2 >= absi(c.x - doorX) && patT) { if (--patT == 48) sfx(S_MOO); if ((patT & 15) == 8) sfx(S_FUEL); c.t--; }   // a pat on the head first
             else if (c.t / 2 >= absi(c.x - doorX) && (c.t & 1)) { c.x = (int16_t)(c.x + d); c.t--; }   // the crew come out, take the cow and lead it in
-            if (c.y >= groundAt(c.x)) { c.y = (int16_t)groundAt(c.x); if (c.kind == 7) { c.kind = 8; c.t = 0; c.vx = (int8_t)d; patT = 60; ropeL = (uint8_t)clampi(c.y - LY() - 16, 0, 255); } }
+            if (c.y >= groundAt(c.x)) { c.y = (int16_t)groundAt(c.x); if (c.kind == 7) { c.kind = 8; c.t = 0; c.vx = (int8_t)d; patT = 96; ropeL = (uint8_t)clampi(c.y - LY() - 16, 0, 255); } }
             if (!d && c.kind == 8) { c.kind = 0; hoverT = 0; cowsN++; addScore(1000, doorX, c.y - 20); say(MS_COWS_HOME, 60); sfx(S_SAVED); tankT = 100; shield = shMax(); }   // home with the colonists: steaks up, and the lander topped up
             continue;
         }
@@ -1832,7 +1859,11 @@ static void drawCritters() {
             if (c.kind == 6 || c.kind == 7) { R(c.x - cam, LY() + 8, 1, c.y - LY() - 16, C_SILVER); R(c.x - cam - 4, c.y - 7, 9, 1, C_GOLD); }   // the rope and the harness
             if (c.kind == 8) {
                 const int d = sgn(c.x - doorX), at = c.t / 2 >= absi(c.x - doorX);
-                if (at && patT) { blitBC(C_MAN_STAND, c.x - d * 12 - cam, groundAt(c.x - d * 12), d < 0); R(c.x + (d > 0 ? -10 : 7) - cam, c.y - 7 - ((patT & 8) ? 3 : 0), 4, 2, C_WHITE); }   // at its head: a hand patting it
+                if (at && patT) { blitBC(C_MAN_STAND, c.x - d * 12 - cam, groundAt(c.x - d * 12), d < 0); const int up = (patT & 8) != 0, hx = c.x - d * 6 - cam, hy = c.y - (up ? 14 : 9), sx0 = c.x - d * 10 - cam, sy0 = groundAt(c.x - d * 12) - 7;
+                    for (int k = 0; k <= 4; k++) pset(sx0 + (hx - sx0) * k / 4, sy0 + (hy - sy0) * k / 4, C_WHITE);   // the arm
+                    R(hx - 1, hy - 1, 3, 3, C_WHITE);                                                              // the hand
+                    if (!up) { const int fy = c.y - 18 - (8 - (patT & 7)); R(hx - 2, fy, 2, 2, C_RED); R(hx + 1, fy, 2, 2, C_RED); R(hx - 1, fy + 1, 3, 2, C_RED); pset(hx, fy + 3, C_RED); }   // a heart floating up
+                }   // at its head: patting it
                 else { const int mx = at ? c.x + d * 9 : doorX + d * (c.t / 2); blitBC((frameNo & 4) ? C_MAN_RUN1 : C_MAN_RUN2, mx - cam, groundAt(mx), d > 0); }
             }   // the crew
             if (c.kind == 5) { const Enemy &e = en[c.vx]; drawBeam((e.x >> 4) - cam, e.y >> 4, c.y + 1); }   // beamed up, legs kicking
@@ -2117,9 +2148,28 @@ static void drawShots() {
     }
 }
 
-static void drawHud() {
-    R(0, 0, SW, TOP, C_INK);
 #ifdef CHGBA
+static uint8_t hudCache[TOP * GFX_FB_STRIDE] __attribute__((aligned(4), section(".ewram")));   // the HUD's rows as last drawn, bar the moving scanner marks
+static uint32_t hudKey[8];
+#endif
+static void drawHud() {
+    // enum first: the scanner's size and mapping are needed by both halves
+    enum { RH = TOP - 10, RW = SW - 8 };
+    auto rx = [](int wx) { return 4 + wx * RW / W; };
+    auto ry = [](int y) { return 9 + (y > TOP ? (y - TOP) * (RH - 1) / (SH - TOP) : 0); };
+#ifdef CHGBA
+    // GBA: the bar, the numbers and the ground line change seldom: kept as rows, copied back, redrawn only when a value moves
+    uint32_t k[8];
+    const int fw0 = fuel * 62 / FUEL_MAX;
+    k[0] = (uint32_t)fw0 | (uint32_t)(fuel < FUEL_MAX / 3 ? ((frameNo & 8) ? 1 : 2) : 0) << 8 | (uint32_t)nSaved << 12 | (uint32_t)quota << 20;
+    k[1] = (uint32_t)seats | (uint32_t)shield << 8 | (uint32_t)stage << 16 | (uint32_t)hgtGen << 24;
+    k[2] = (uint32_t)score;
+    for (int i = 3; i < 8; i++) k[i] = 0;
+    bool same = true;
+    for (int i = 0; i < 3; i++) if (k[i] != hudKey[i]) same = false;
+    if (same) memcpy(gfx_fb, hudCache, sizeof hudCache);
+    else {
+    R(0, 0, SW, TOP, C_INK);
     {   // StarLift Advance: the top row spread across 240: fuel, colonists, seats, shield, stage, score
         text35(2, 1, "FUEL", C_SILVER);
         R(20, 1, 64, 6, C_STEEL);
@@ -2138,6 +2188,7 @@ static void drawHud() {
         text35(SW - 1 - text35Width(s), 1, s, C_WHITE);
     }
 #else
+    R(0, 0, SW, TOP, C_INK);
     // fuel
     text35(1, 0, "F", C_SILVER);
     R(7, 2, 26, 4, C_STEEL);
@@ -2154,9 +2205,6 @@ static void drawHud() {
     text35(SW - 1 - text35Width(s), 1, s, C_WHITE);
 #endif
     // the scanner: the whole stage across the screen, as tall as the HUD (RH rows from row 9)
-    enum { RH = TOP - 10, RW = SW - 8 };
-    auto rx = [](int wx) { return 4 + wx * RW / W; };
-    auto ry = [](int y) { return 9 + (y > TOP ? (y - TOP) * (RH - 1) / (SH - TOP) : 0); };
     R(3, 8, RW + 2, 1, C_STEEL);
 #ifdef CHGBA
     {   // GBA: the ground line's rows kept from stage to stage (no divide on the ARM7: 3 a pixel cost ~3 ms), drawn straight into the frame
@@ -2170,6 +2218,9 @@ static void drawHud() {
             uint8_t *q = gfx_fb + line[i] * GFX_FB_STRIDE + (x >> 1);
             *q = (x & 1) ? (uint8_t)((*q & 0x0F) | (C_GNDD << 4)) : (uint8_t)((*q & 0xF0) | C_GNDD);
         }
+    }
+    memcpy(hudCache, gfx_fb, sizeof hudCache);
+    for (int i = 0; i < 3; i++) hudKey[i] = k[i];
     }
 #else
     for (int i = 0; i < RW; i++) { const int a = i * W / RW, b = a + W / RW / 2, m = hgt[a / 4] < hgt[b / 4] ? hgt[a / 4] : hgt[b / 4]; pset(4 + i, ry(m), C_GNDD); }   // the ground line
@@ -2233,6 +2284,9 @@ static void drawWorld() {
     cam = saved;
     dbg::prof(8);
     drawGore();
+#ifdef SL_FPS
+    drawFps();
+#endif
     drawPointer();
     if (bannerT) {
         char *b = bannerTxt;
@@ -2383,7 +2437,7 @@ static void draw() {
     {                                                                  // a fade in from black when a screen starts
         static uint8_t lastState = 255, fadeT;
         if (state != lastState) { if (state == TITLE || state == INTRO || state == OVER) fadeT = 8; lastState = (uint8_t)state; }
-        if (fadeT) { fadeT--; gfx_setFade((uint8_t)(fadeT * 30), 0x0000); }
+        if (fadeT) { fadeT--; gba_hwFade((uint8_t)(fadeT * 30), 0x0000); }
     }
 #endif
     if (!card::ok() || loadReq) {                                      // STARLIFT.DAT holds the worlds, the music and the big pictures
@@ -2514,12 +2568,23 @@ static void update() {
     if (shake) shake--;
     if (bannerT) bannerT--;
     if (killT) killT--;
-    if (flashT) { flashT--; gfx_setFade((uint8_t)(flashT * 40), 0xFFFF); }
+    if (flashT) { flashT--;
+#ifdef CHGBA
+        gba_hwFade((uint8_t)(flashT * 40), 0xFFFF);
+#else
+        gfx_setFade((uint8_t)(flashT * 40), 0xFFFF);
+#endif
+    }
     for (auto &q : pops) if (q.t) q.t--;
     if (lightT) {                                                   // lightning: the sky goes white for a moment
         lightT--;
+#ifdef CHGBA
+        if (lightT > 4) gba_hwFade(80, 0xFFFF);                     // a brightness flash: no sky rebuild
+        else if (lightT == 4 && !flashT) gba_hwFade(0, 0xFFFF);
+#else
         if (lightT == 7) { gfx_setPaletteEntry(C_SKY0, gfx_rgb(220, 220, 255)); gfx_setPaletteEntry(C_SKY1, gfx_rgb(255, 255, 255)); }
         if (lightT == 4) applyPalette();
+#endif
     }
     if (state == TITLE || state == HELP || state == OPTIONS) {        // the menus: the scene scrolls by behind them
         if (++cam > W - 300) cam = 200;

@@ -1,0 +1,21 @@
+# 05-structure-obj: the middle layer's background buildings (drawStructures(1)) as hardware sprites.
+#
+# They were the biggest pictures in the frame (clipped behind the near hills, one masked store per column and row) and
+# they only scroll. As OBJ sprites (priority 2: in front of the mid hills, background 3, behind the ground layer 1 and
+# the picture 0) the hills cover them as the clip did; the lights drawn after them are still pixels in the picture.
+# Needs patch 02 (blit_runs.inc's bcObj).
+
+@@ sketch.cpp
+<<<<<<<
+static NOINL void blitBC(const CSpr &s, int cx, int by, bool flip, uint8_t solid = 255, const uint8_t *map = MAP) { blit(s, cx - s.w / 2, by - s.h + 1, flip, solid, map); }
+=======
+static NOINL void blitBC(const CSpr &s, int cx, int by, bool flip, uint8_t solid = 255, const uint8_t *map = MAP) { blit(s, cx - s.w / 2, by - s.h + 1, flip, solid, map); }
+#include "struct_obj.inc"   // GBA: patch 05-structure-obj
+>>>>>>>
+
+@@ sketch.cpp
+<<<<<<<
+    blit(c, x, y, ((h >> 22) & 1) && n != 3, 255, mp);
+=======
+    if (L != 1 || !blitObj(c, x, y, ((h >> 22) & 1) && n != 3, mp, 2)) blit(c, x, y, ((h >> 22) & 1) && n != 3, 255, mp);   // GBA: patch 05
+>>>>>>>
