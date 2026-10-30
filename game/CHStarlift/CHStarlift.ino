@@ -20,7 +20,7 @@
 #include <chgame/Draw.h>
 #include <chgame/RamFunc.h>
 
-#define SL_VERSION "0.24"
+#define SL_VERSION "0.28"
 #define NOINL __attribute__((noinline))                     // small helpers called from many places: one copy saves flash
 
 // HOUSE index -> game colour
@@ -178,7 +178,7 @@ static uint8_t banner, bannerT, bannerNew;   // bannerNew: its text is to be rea
 static char bannerTxt[28];                            // a message (MS_...) shown for bannerT frames
 static int8_t bannerNum = -1;                              // a number after it (-1: none)
 static uint8_t tripN, killT, kills, flashT;
-static uint8_t dlv, dlvT, lidT, partyT, foodOn, feasts, cowsN, cowsOn, crashN, stars;   // cowsOn: aboard; crashN: landers lost this stage   // feasts: this stage's; cowsN: cows grazing at its end                // dlv: 0 none, 1 the bag falls, 2 the speeder fetches it, 3 brings it, 4 tosses it, 5 zooms off
+static uint8_t dlv, dlvT, lidT, partyT, foodOn, feasts, cowsN, crashN, stars, hoverT, ropeL;   // hoverT: hovering over a cow; ropeL: the empty rope, winding up; crashN: landers lost this stage   // feasts: this stage's; cowsN: cows grazing at its end                // dlv: 0 none, 1 the bag falls, 2 the speeder fetches it, 3 brings it, 4 tosses it, 5 zooms off
 static int bagX, bagY, scX, scY;                                // px (the speeder's: its middle, the ground under it)
 static int8_t scDir = 1;
 static uint8_t tripNx, bumpT, charge;                          // charge: frames UP has been held (CHARGED: ready)
@@ -187,6 +187,7 @@ enum { CHARGED = 15 };                                   // bumpT: frames until 
 #define SL_DIFF 1
 #endif
 static uint8_t diff = SL_DIFF;                                   // 0 easy, 1 normal, 2 hard (saved)
+#define dE (diff + 1)                                            // the difficulty in play, a step up: easy plays as the old normal, hard is harder still
 static uint8_t titleSel, pauseSel, helpPage, optSel, musicV = 4, fxV = 4;
 static int gSaved, overT;                                 // colonists home this game; the game-over screen's clock
 static bool newHi;
@@ -444,12 +445,12 @@ static void genStage() {
     }
     memset(men, 0, sizeof men);
     nMen = (uint8_t)clampi(8 + stage, 8, MEN);
-    quota = (uint8_t)((nMen * clampi(20 + diff * 15 + stage * 3, 20, 90) + 99) / 100);   // a fifth to a half at first, more each stage
+    quota = (uint8_t)clampi(3 + stage + diff, 3, nMen * 3 / 4);      // 3, 4, 5, 6 ... one more each stage (and each difficulty)
     memset(items, 0, sizeof items);
     { const uint8_t *a = PLR.alien[sector & 1]; remap(EMAP, RM(3, a[0]) | RM(5, a[1]) << 8 | RM(11, a[2]) << 16 | RM(6, a[3]) << 24); }
     dlv = foodOn = partyT = lidT = feasts = cowsN = crashN = 0;
     const int nIt = clampi((stage + 2) / 3, 0, 5);
-    for (int k = 0; k < nIt + (diff ? 0 : 3); k++) {                          // (easy: three more shield kits)                // things to pick up: supplies, repairs, fuel, now and then an engine part
+    for (int k = 0; k < nIt; k++) {                          // (easy: three more shield kits)                // things to pick up: supplies, repairs, fuel, now and then an engine part
         int x = 300 + (int)(hash(s + k * 53u) % (W - 600));
         while (busyAt(x)) x += 23;
         items[k] = { (int16_t)x, (uint8_t)(k >= nIt ? IT_REPAIR : k == 0 ? IT_SUPPLY : (stage % 5 == 4 && k == 1) ? IT_ENGINE : (k & 1) ? IT_REPAIR : IT_FUEL), 1 };
@@ -513,7 +514,7 @@ static NOINL void addScore(int v, int x, int y) {
     if (score >= nextLife) { nextLife += 10000; if (lives < 9) lives++; say(MS_EXTRA_LANDER); }
     if (x >= 0) for (auto &q : pops) if (!q.t) { q = { (int16_t)x, (int16_t)y, (uint16_t)v, 30 }; break; }
 }
-static inline uint8_t shMax() { return diff ? 7 - diff * 2 : 8; }   // hits the hull takes: 8 easy, 5 normal, 3 hard
+static inline uint8_t shMax() { return (uint8_t)(diff ? 4 - diff : 5); }           // hits the hull takes: 5 easy, 3 normal, 2 hard
 static int gHund() { const int g = PLR.grav + (sector ? PLR.grav / 8 : 0); return g * 100 / 64; }   // gravity in hundredths of a G
 
 // ---- save ---------------------------------------------------------------------------------------------------------
@@ -548,7 +549,7 @@ static void wreck() {
 #ifdef CHGBA
     gba_mosaic(12);                                                 // the GBA: the picture shatters for a moment
 #endif
-    lst = 2; deadT = 80; shake = 18; flashT = 6; crashN++; cowsOn = 0;
+    lst = 2; deadT = 80; shake = 18; flashT = 6; crashN++;
     boom(LX(), LY(), 34, 20);
     for (int k = 0; k < 4; k++) blast(LX() + rnd(25) - 12, LY() + rnd(15) - 9, 8 + rnd(8), 4 + k * 5);   // the tanks go one after another
     burst(LX(), LY(), 14, 60, 50, 60, 50, C_SILVER, C_GOLD);           // the hull in pieces
@@ -577,8 +578,8 @@ static void hullPt(int dx, int dy, int &x, int &y) {
 static void touchDown() {
     const int x = LX();
     const int gl = groundAt(x - 7), gr = groundAt(x + 7);
-    const bool level = absi(gl - gr) <= 3, upright = absi(ang) <= 2, soft = lvy <= 340 - diff * 40 && absi(lvx) <= 220 - diff * 30;
-    if (gear && level && upright && !soft && shield > 1 && lvy <= 520 - diff * 40 && absi(lvx) <= 320 - diff * 30) {
+    const bool level = absi(gl - gr) <= 4, upright = absi(ang) <= 3, soft = lvy <= 420 - dE * 40 && absi(lvx) <= 270 - dE * 30;
+    if (gear && level && upright && !soft && shield > 1 && lvy <= 620 - dE * 40 && absi(lvx) <= 380 - dE * 30) {
         shield--; sfx(S_HIT); shake = 6;                                 // a heavy bump: it holds
     } else if (!gear || !level || !upright || !soft) {
         if (!gear) say(MS_GEAR_UP, 60);
@@ -602,7 +603,6 @@ static void touchDown() {
 static void updateLander(bool l, bool r, bool thr, bool gearEdge, bool fire, bool up) {
     if (invT) invT--;
     if (fireCd) fireCd--;
-    if (!diff && (frameNo % 600) == 0 && shield < shMax()) shield++;     // easy: self-repair
     if (lst == 2) {
         if (--deadT == 0) {
             if (lives <= 1) { lives = 0; gameOver(); return; }
@@ -650,10 +650,6 @@ static void updateLander(bool l, bool r, bool thr, bool gearEdge, bool fire, boo
         if (thrLvl >= 4) { lst = 0; gear = 2; ly -= 512; lvy = -40; onPad = 0; unloadT = 0; tripN = 0; }
         else {
             synth::engine(0);
-            for (auto &c : crit) if (c.kind == 4 && absi(c.x - LX()) < 18) {   // a cow alongside: a milk run tops up the tank, then it climbs aboard
-                if (fuel < FUEL_MAX) fuel += 3;
-                else if (seats < SEATS) { c.kind = 0; seats++; cowsOn++; sfx(S_MOO); say(MS_COW_ABOARD, 40); }
-            }
             for (auto &it : items)                                   // things beside the lander are loaded
                 if (it.st == 1 && absi(it.x - LX()) < 20) {
                     it.st = it.kind == IT_SUPPLY ? 2 : 0;
@@ -665,7 +661,6 @@ static void updateLander(bool l, bool r, bool thr, bool gearEdge, bool fire, boo
                     else say(MS_SUPPLIES);
                     addScore(100, it.x, groundAt(it.x) - 12);
                 }
-            if (onPad == 2 && cowsOn) { seats -= cowsOn; cowsN += cowsOn; addScore(1000 * cowsOn, -1, 0); say(MS_COWS_HOME, 60, cowsOn); cowsOn = 0; }   // cows home
             if (onPad == 2) {                                        // the base pad: refuel, repair, let the colonists off
                 for (auto &it : items) if (it.st == 2) { it.st = 0; addScore(500 * (sector + 1), doorX, groundAt(doorX) - 20); say(MS_DELIVERED); sfx(S_SAVED); }
                 if (foodOn) {
@@ -678,10 +673,12 @@ static void updateLander(bool l, bool r, bool thr, bool gearEdge, bool fire, boo
                 if ((frameNo & 31) == 0 && shield < shMax()) shield++;
                 if (seats && ++unloadT >= 12) {
                     unloadT = 0;
+                    bool off = false;
                     for (auto &m : men) if (m.st == M_ABOARD) {
-                        m.st = M_WALK; m.x = (int16_t)(LX() + (doorX > LX() ? 5 : -5)); m.y = (int16_t)groundAt(m.x); m.face = (int8_t)sgn(doorX - m.x); seats--;
+                        m.st = M_WALK; m.x = (int16_t)(LX() + (doorX > LX() ? 5 : -5)); m.y = (int16_t)groundAt(m.x); m.face = (int8_t)sgn(doorX - m.x); seats--; off = true;
                         break;
                     }
+                    if (!off) seats = 0;                                     // nobody left aboard: the count was out
                 }
             } else if (!fuel) {                                      // stranded: the colonists get off and a new lander comes
                 if (++dryT > 90) {
@@ -710,10 +707,10 @@ static void updateLander(bool l, bool r, bool thr, bool gearEdge, bool fire, boo
     lvy += gacc >> 2; gacc &= 3;
     if (thrusting) {
         int t = (104 + p.grav * 5 / 4 + engineUp * 7) * 48 / (48 + seats) * thrLvl / 6;   // the engine suits the world (a full load still climbs on the heaviest); passengers are heavy; it spools up
-        if (LY() < TOP) t = LY() > -24 ? t * (LY() + 24) / (TOP + 24) : 0;            // above the screen the air thins fast: no hanging up there
+        if (LY() < TOP) t = LY() > -2 ? t * (LY() + 2) / (TOP + 2) : 0;            // above the screen the air thins fast: no hanging up there
         lvx += (int16_t)((t * 5 * sinA(ang)) >> 12);                          // the push sideways a quarter as strong again
         lvy -= (int16_t)((t * cosA(ang)) >> 10);
-        if (thr && (diff || (frameNo & 1))) fuel--;                         // (easy: half the fuel)
+        if (thr) fuel--;
         if (fuel == FUEL_MAX / 3) { sfx(S_LOW); say(MS_LOW_FUEL, 50); }
         if (!fuel) say(MS_FUEL_EMPTY, 60);
         if (frameNo & 1) { int nx, ny; hullPt(0, 10, nx, ny); part(nx, ny, (-sinA(ang) >> 5) + rnd(5) - 2, (cosA(ang) >> 5) + rnd(3), 10, (frameNo & 2) ? C_STEEL : C_SILVER); }
@@ -727,7 +724,7 @@ static void updateLander(bool l, bool r, bool thr, bool gearEdge, bool fire, boo
     }
     lvx = (int16_t)clampi(lvx, -760, 760); lvy = (int16_t)clampi(lvy, -700, 1150);
     lx += lvx; ly += lvy;
-    if (LY() < -60) { ly = -60 << 8; if (lvy < 0) lvy = 0; }            // no ceiling: up and out of the screen, until the air runs out
+    if (LY() < -2) { ly = -2 << 8; if (lvy < 0) lvy = 0; }            // the ceiling: the bottom third of the lander stays on screen
     if (lx < (10 << 8)) { lx = 10 << 8; lvx = 0; }
     if (lx > ((W - 10) << 8)) { lx = (W - 10) << 8; lvx = 0; }
     // the ground: the feet (or, gear up, the descent stage) and the hull's other corners
@@ -754,6 +751,8 @@ static NOINL int nearestIdle(int x, int maxd) {
     for (int i = 0; i < nMen; i++) if (men[i].st == M_IDLE && absi(men[i].x - x) < bd) { bd = absi(men[i].x - x); best = i; }
     return best;
 }
+
+static NOINL bool walking() { for (const auto &m : men) if (m.st == M_WALK) return true; return false; }   // colonists still on their way in
 
 static NOINL void manStep(Man &m, int d) { m.x = (int16_t)(m.x + d); m.y = (int16_t)groundAt(m.x); }   // a step along the ground
 
@@ -841,7 +840,7 @@ static void updateMen() {
 static NOINL void eshot(int x, int y, int tx, int ty, int speed, uint8_t kind) {          // x, y px; speed in 1/16 px a frame
     const int dx = tx - x, dy = ty - y, d = absi(dx) > absi(dy) ? absi(dx) + absi(dy) / 2 : absi(dy) + absi(dx) / 2;
     if (!d) return;
-    speed = speed * (2 + diff) / 4;                                  // easy half speed, normal three quarters
+    speed = speed * (2 + dE) / 4;                                  // easy half speed, normal three quarters
     for (auto &s : es) if (!s.life) {
         s = { (int16_t)(x * 16), (int16_t)(y * 16), (int8_t)(dx * speed / d), (int8_t)(dy * speed / d), 90, kind };
         sfx(S_ZAP);
@@ -908,14 +907,14 @@ static void updateEnemies() {
     }
     bool idle = false;
     for (int i = 0; i < nMen; i++) if (men[i].st == M_IDLE) idle = true;
-    const int want = clampi((diff + stage) / 2, 1, 5 + diff);            // (one at a time on the first stage)
+    const int want = clampi((dE + stage) / 2, 1, 5 + dE);            // (one at a time on the first stage)
     if (spawnT) spawnT--;
     else if (fliers < want) {
         const int side = rnd(2) ? 1 : -1;
         const int x = clampi(cam + SW / 2 + side * (150 + (SW - 128) / 2 + rnd(110)), 20, W - 20);
         uint8_t k = (idle && ufos < 1 + stage / 3 && rnd(10) < 6) ? E_UFO : (rnd(3) && stage ? E_STINGER : E_MINE);   // (no stingers on the first stage)
         if (Enemy *e = spawnEn(k, x, 28 + WDY + rnd(30))) { if (k == E_UFO) { sfx(S_UFO); } e->vx = (int8_t)(-side * 8); }
-        spawnT = clampi(300 - stage * 12, 90, 300) * (4 - diff) / 3;                  // enemies come spaced out: time for a rescue between them
+        spawnT = clampi(300 - stage * 12, 90, 300) * (9 - 2 * dE) / 7;                  // enemies come spaced out: time for a rescue between them
     }
     for (int ei = 0; ei < ENS; ei++) {
         Enemy &e = en[ei];
@@ -994,7 +993,7 @@ static void updateEnemies() {
             const int tx = X + (ex < X ? -48 : 48), ty = Y - 6 + isin(e.t * 3) / 16;
             e.vx = (int8_t)clampi(e.vx + sgn(tx - ex), -14 - sector * 4, 14 + sector * 4);
             e.vy = (int8_t)clampi(e.vy + sgn(ty - ey), -10, 10);
-            const int rate = clampi(130 - planet * 6 - sector * 20, 50, 130) * (4 - diff) / 3;
+            const int rate = clampi(130 - planet * 6 - sector * 20, 50, 130) * (9 - 2 * dE) / 7;
             if (dlv == 3 && absi(scX - ex) < 110 && (e.t % rate) == 0) eshot(ex, ey, scX, scY, 22 + sector * 6, 0);   // the speeder first
             else if (lst != 2 && absi(X - ex) < 110 && (e.t % rate) == 0) eshot(ex, ey, X, Y, 22 + sector * 6, 0);
             break;
@@ -1656,6 +1655,7 @@ static void drawPlants() {
 
 // background wildlife: fliers and crawlers that live their own lives (nothing touches them)
 static void updateCritters() {
+    bool hov = false;
     for (auto &c : crit) {
         if (!c.kind) {
             if ((PLR.fly || PLR.crawl) && rnd(90) == 0) {
@@ -1666,6 +1666,24 @@ static void updateCritters() {
             continue;
         }
         c.t++;
+        if (c.kind >= 6) {                                              // a cow in its harness: 6 on the rope, 7 let down at the base, 8 led in by the crew
+            const int d = sgn(doorX - c.x);
+            if (c.kind == 6) {
+                if (lst == 2) { c.kind = 3; c.t = 0; hoverT = 0; continue; }  // the lander lost: down it drops
+                c.x = (int16_t)LX();
+                c.y = (int16_t)(c.y + clampi(LY() + 22 - c.y, -1, 4));       // winched up a little, then along under the lander
+                if (absi(c.x - basePadX - 20) < 24) c.kind = 7;               // over the base: let down
+            } else if (c.kind == 7) { c.x = (int16_t)LX(); if ((c.t & 3) == 0) c.y++; }   // slowly down the rope, still under the lander
+            else if (c.t / 2 >= absi(c.x - doorX) && (c.t & 1)) { c.x = (int16_t)(c.x + d); c.t--; }   // the crew come out, take the cow and lead it in
+            if (c.y >= groundAt(c.x)) { c.y = (int16_t)groundAt(c.x); if (c.kind == 7) { c.kind = 8; c.t = 0; ropeL = (uint8_t)clampi(c.y - LY() - 16, 0, 255); } }
+            if (!d && c.kind == 8) { c.kind = 0; hoverT = 0; cowsN++; addScore(1000, doorX, c.y - 20); say(MS_COWS_HOME, 60); sfx(S_SAVED); fuel = FUEL_MAX; shield = shMax(); }   // home with the colonists: steaks up, and the lander topped up
+            continue;
+        }
+        if (c.kind == 4 && lst == 0 && hoverT < 255 && absi(c.x - LX()) < 8 && c.y - LY() < 56) {   // hovering over a cow: beeps, then down comes the rope
+            hov = true;
+            if ((++hoverT & (hoverT > 60 ? 7 : 15)) == 1) sfx(S_WARN);     // beeps, quicker as the rope comes
+            if (hoverT >= 90) { c.kind = 6; hoverT = 255; say(MS_COW_ABOARD, 150); continue; }
+        }
         if (c.kind >= 3) {                                              // a cow: tumbles down, then wanders and grazes
             if (c.kind == 5) {                                              // in a beam
                 const Enemy &e = en[c.vx];
@@ -1689,13 +1707,19 @@ static void updateCritters() {
         else { if ((c.t & 3) == 0) c.x = (int16_t)(c.x + c.vx); c.y = (int16_t)groundAt(c.x); if (rnd(300) == 0) c.vx = (int8_t)-c.vx; }
         if (absi(c.x - cam - SW / 2) > 170 + (SW - 128) / 2) c.kind = 0;
     }
+    if (!hov && hoverT < 255) hoverT = 0;
+    if (ropeL && (frameNo & 1)) ropeL--;                             // the rope wound up slowly
 }
 static void drawCritters() {
+    for (const auto &c : crit) if (c.kind == 4 && hoverT && hoverT < 255 && absi(c.x - LX()) < 8) R(c.x - cam - 7, c.y - 12, hoverT / 6, 2, C_GOLD);   // hovering: the bar fills
+    if (ropeL && lst != 2) R(LX() - cam, LY() + 8, 1, ropeL, C_SILVER);   // the empty rope going up
     for (const auto &c : crit) {
         if (!c.kind) continue;
         if (c.kind >= 3) {                                              // the cow
+            if (c.kind == 6 || c.kind == 7) { R(c.x - cam, LY() + 8, 1, c.y - LY() - 16, C_SILVER); R(c.x - cam - 4, c.y - 7, 9, 1, C_GOLD); }   // the rope and the harness
+            if (c.kind == 8) { const int d = sgn(c.x - doorX), mx = c.t / 2 >= absi(c.x - doorX) ? c.x + d * 9 : doorX + d * (c.t / 2); blitBC(C_MAN_RUN1, mx - cam, groundAt(mx), d > 0); }   // the crew
             if (c.kind == 5) { const Enemy &e = en[c.vx]; drawBeam((e.x >> 4) - cam, e.y >> 4, c.y + 1); }   // beamed up, legs kicking
-            const bool fall = c.kind != 4, eat = !fall && (c.t & 127) >= 40;
+            const bool fall = c.kind != 4 && c.kind != 8, eat = c.kind == 4 && (c.t & 127) >= 40;
             blitBC(fall ? (((c.t >> 2) & 1) ? C_COWUP : C_COW) : eat ? C_COWEAT : C_COW, c.x - cam, c.y, fall ? ((c.t >> 3) & 1) : c.vx < 0);
             continue;
         }
@@ -2046,14 +2070,15 @@ static void drawWorld() {
     drawGroundThings();
     card::lowPri = false;
     dbg::prof(5);
+    { const int c = cam; cam = saved; drawHud(); cam = c; }        // the HUD first: everything up there flies in front of the radar
     drawMen();
     drawEnemies();
     dbg::prof(6);
     drawLander();
+    drawDelivery();
 #ifdef SL_BEAMTEST
     drawBeam(SW / 2, 40 + WDY, 140 + WDY);                             // a test: a beam on screen every frame
 #endif
-    drawDelivery();
     drawShots();
 #ifndef SL_NOWX
     drawWeather();
@@ -2065,7 +2090,6 @@ static void drawWorld() {
     dbg::prof(7);
     for (auto &q : pops) if (q.t) { char s[8]; fmt(s, "", q.v); text35(q.x - cam - 6, q.y - (30 - q.t) / 3, s, (q.t & 2) ? C_WHITE : C_GOLD); }
     cam = saved;
-    drawHud();
     dbg::prof(8);
     drawPointer();
     if (bannerT) {
@@ -2453,7 +2477,7 @@ static void update() {
         updateWeather();
         updateCritters();
         updateCamera();
-        if ((nSaved + nLost >= nMen || nLost > nMen - quota) && seats == 0) {
+        if ((nSaved >= quota || nSaved + nLost >= nMen || nLost > nMen - quota) && seats == 0 && !walking()) {
             if (++endT > 50) {
                 missed = nSaved < quota;
                 state = CLEAR; timer = 150; synth::engine(0);
