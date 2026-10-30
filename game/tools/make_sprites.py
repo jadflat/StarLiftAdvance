@@ -157,6 +157,8 @@ for f in range(4):                                     # four frames: the lights
         'kkkkkkkkkkk',
     ], 23)
 
+for n, d in (('SAUCER_TL', -14), ('SAUCER_TR', 14)): SPR[n] = rotate(SPR['SAUCER0'], d, 23)   # an angry saucer rocking
+
 # ---- a snatcher: a red brain-jelly with one gold eye and trailing tentacles (two frames)
 SN_TOP = [
     'kkkkk',
@@ -316,7 +318,7 @@ CARD = {}                                             # the pictures read from S
 # the upright lander; the common colonist poses and the mines. The rarer ones follow.
 HOT = (['SAUCER%d' % i for i in range(4)] + ['SNATCH0', 'SNATCH1', 'TURRET'] + ['LAND0', 'LAND1', 'LAND2'] +
        ['MAN_STAND', 'MAN_WAVE1', 'MAN_RUN1', 'MAN_RUN2', 'MAN_CHEER', 'MINE0', 'MINE1'])
-for n in HOT + ['MAN_LOOKUP', 'MAN_TALK', 'MAN_WAVE2'] + ['LANDUP%d' % i for i in range(7)] + ['MAN_SPIN%d' % i for i in range(8)] + ['LAND3', 'LAND4', 'LAND5', 'LAND6']:
+for n in HOT + ['MAN_LOOKUP', 'MAN_TALK', 'MAN_WAVE2'] + ['LANDUP%d' % i for i in range(7)] + ['MAN_SPIN%d' % i for i in range(8)] + ['LAND3', 'LAND4', 'LAND5', 'LAND6', 'SAUCER_TL', 'SAUCER_TR']:
     CARD[n] = SPR.pop(n)
 CARD['BASE'] = SPR.pop('BASE')
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
