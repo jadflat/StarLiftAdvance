@@ -173,7 +173,7 @@ static int32_t lx, ly;
 static int16_t lvx, lvy;
 static int8_t ang, facing = 1;
 static uint16_t fuel;
-static uint8_t seats, shield, lst, gear, rotT, deadT, fireCd, gunCd, hovT, onPad, unloadT, invT, dryT, thrLvl;   // thrLvl: the engine spooling, 0-6   // lst: 0 flying, 1 landed, 2 wrecked
+static uint8_t seats, shield, lst, gear, rotT, deadT, fireCd, gunCd, hovT, hovE, onPad, unloadT, invT, dryT, thrLvl;   // thrLvl: the engine spooling, 0-6   // lst: 0 flying, 1 landed, 2 wrecked
 static bool thrusting;
 
 static uint8_t banner, bannerT, bannerNew;   // bannerNew: its text is to be read from the card (once, not every frame)
@@ -719,7 +719,9 @@ static void updateLander(bool l, bool r, bool thr, bool gearEdge, bool fire, boo
     const Planet &p = PLR;
     static uint8_t gacc;                                             // gravity in 1/1024 px a frame squared: carry the quarters
     gacc = (uint8_t)(gacc + p.grav * 12 / 5 + (sector ? p.grav / 4 : 0));    // a heavy lander: two and three quarter times the worlds' gravity
-    lvy += (hovT && !thrusting) ? (hovT--, -(lvy >> 2)) : gacc >> 2;   // hovering holds its height: gravity off, the fall damped out
+    if (hovT) { hovT--; if (hovE < 120 && lvy >= 0) { hovE += 3; lvy -= lvy >> 2; gacc = 0; } }   // hovering only slows a fall, and runs down
+    else if (hovE) hovE--;                                           // the charge comes back when not hovering
+    lvy += gacc >> 2;
     gacc &= 3;
     if (thrusting) {
         int t = (104 + p.grav * 5 / 4 + engineUp * 7) * 48 / (48 + seats) * thrLvl / 6;   // the engine suits the world (a full load still climbs on the heaviest); passengers are heavy; it spools up
