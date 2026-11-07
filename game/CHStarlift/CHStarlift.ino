@@ -192,6 +192,7 @@ enum { CHARGED = 15 };                                   // bumpT: frames until 
 static uint8_t diff = SL_DIFF;                                   // 0 easy, 1 normal, 2 hard (saved)
 #define dE (diff + 1)                                            // the difficulty in play, a step up: easy plays as the old normal, hard is harder still
 static uint8_t titleSel, pauseSel, helpPage, optSel, musicV = 4, fxV = 4;
+static uint8_t credits = 5;                                   // continues left this game
 static int gSaved, overT;                                 // colonists home this game; the game-over screen's clock
 static bool newHi;
 static uint8_t pauseNote;                                  // a message (MS_...), 0 = none
@@ -2486,7 +2487,10 @@ static void draw() {
             textC(60, fmt(s, T(MS_BEST), hiScore), C_GOLD);
             textC(70, fmt(s, T(MS_COLONISTS_HOME), gSaved), C_GREEN);
             if (newHi && (frameNo & 8)) textCS(91, T(MS_NEW_HIGH_SCORE), C_GOLD);
-            if (overT > 90 && (frameNo & 16)) textCS(110, T(MS_PRESS_A), C_WHITE);
+            if (overT > 90) {                                                // credits: A continues this world, B quits
+                if (credits) textC(80, fmt(s, T(MS_CONTINUES_LEFT), credits), C_GOLD);
+                else if (frameNo & 16) textCS(80, T(MS_PRESS_A), C_WHITE);
+            }
         }
         break;
     }
@@ -2499,7 +2503,7 @@ static void draw() {
 
 // ---- update ------------------------------------------------------------------------------------------------------------
 static void toTitle() {
-    state = TITLE; titleSel = 0; stage = 0; planet = 0;
+    state = TITLE; titleSel = 0; stage = 0; planet = 0; credits = 5;
     loadReq = true;
     cam = 200; synth::music(0); synth::engine(0);
 }
@@ -2719,7 +2723,10 @@ static void update() {
     case OVER:
         updateShots(); updateWeather();
         if (overT < 2000) overT++;
-        if (overT > 90 && (edge & 4)) toTitle();
+        if (overT > 90) {
+            if (credits && (edge & 4)) { credits--; lives = 3; newStage(); saveProgress(true); }
+            else if (edge & (credits ? 8 : 4)) toTitle();
+        }
         break;
     }
 #ifdef SL_TRACE
