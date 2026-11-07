@@ -20,7 +20,7 @@
 #include <chgame/Draw.h>
 #include <chgame/RamFunc.h>
 
-#define SL_VERSION "0.28"
+#define SL_VERSION "0.43"
 #define NOINL __attribute__((noinline))                     // small helpers called from many places: one copy saves flash
 
 // HOUSE index -> game colour
@@ -2176,20 +2176,27 @@ static void drawHud() {
     else {
     R(0, 0, SW, TOP, C_INK);
     {   // StarLift Advance: the top row spread across 240: fuel, colonists, seats, shield, stage, score
+        char q[8], g[12], s[12];
+        fmt(q, "", nSaved, "/", quota);
+        fmt(g, "STG ", stage + 1);
+        fmt(s, "", score);
+        const int qw = text35Width(q), gw = text35Width(g), sw = text35Width(s), hw = shMax() * 4 - 1;
+        const int gap = (SW - 3 - 82 - qw - 46 - hw - gw - sw) / 5;      // six blocks spread with equal gaps between them
+        int x = 2 + 82 + gap;
         text35(2, 1, "FUEL", C_SILVER);
         R(20, 1, 64, 6, C_STEEL);
         const int fw = fuel * 62 / FUEL_MAX;
         R(21, 2, fw, 4, fuel < FUEL_MAX / 3 ? ((frameNo & 8) ? C_RED : C_GOLD) : C_GOLD);
-        char q[8];
-        text35(92, 1, fmt(q, "", nSaved, "/", quota), nSaved >= quota ? C_GREEN : C_GOLD);
+        text35(x, 1, q, nSaved >= quota ? C_GREEN : C_GOLD);
+        x += qw + gap;
         for (int i = 0; i < SEATS; i++) {                               // a seat each: the figure lit when taken
             const uint8_t c = i < seats ? C_WHITE : C_STEEL;
-            R(116 + i * 6, 1, 4, 6, c); pset(117 + i * 6, 2, i < seats ? C_GOLD : C_INK); pset(118 + i * 6, 2, i < seats ? C_GOLD : C_INK);
+            R(x + i * 6, 1, 4, 6, c); pset(x + 1 + i * 6, 2, i < seats ? C_GOLD : C_INK); pset(x + 2 + i * 6, 2, i < seats ? C_GOLD : C_INK);
         }
-        for (int i = 0; i < shMax(); i++) R(160 + i * 4, 1, 3, 6, i < shield ? C_GREEN : C_STEEL);
-        char s[12];
-        text35(197, 1, fmt(s, "STG ", stage + 1), C_SILVER);
-        fmt(s, "", score);
+        x += 46 + gap;
+        for (int i = 0; i < shMax(); i++) R(x + i * 4, 1, 3, 6, i < shield ? C_GREEN : C_STEEL);
+        x += hw + gap;
+        text35(x, 1, g, C_SILVER);
         text35(SW - 1 - text35Width(s), 1, s, C_WHITE);
     }
 #else
