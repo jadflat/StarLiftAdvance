@@ -489,11 +489,9 @@ static void genStage() {
     wxLvl = (uint8_t)rnd(4);
 #ifdef SL_STORM
     wxLvl = 3;                                                     // a perf test: the worst weather
-#endif ticket = 0; tubeT = 0;
-    memset(crit, 0, sizeof crit);
-#ifdef SL_STAGESEL
-    { const int cx = basePadX + 20 + (basePadX < W / 2 ? 160 : -160); crit[0] = { (int16_t)cx, (int16_t)groundAt(cx), 1, 4, 0 }; }   // (testing: a cow to lift, near the base)
 #endif
+    ticket = 0; tubeT = 0;
+    memset(crit, 0, sizeof crit);
 }
 
 // ---- effects ------------------------------------------------------------------------------------------------------
