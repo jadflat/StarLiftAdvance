@@ -39,6 +39,8 @@ local si, seen, worst, worstAt, over, tot, hist, overList = 1, 1, 0, 0, 0, 0, {{
 local cs, cb, cm, cn, finished, started = 0, 0, 0, 0, false, false
 local hooked = false
 local CONV = {a("gba_convUs")}
+local STL = {a("gba_dbgStall")}
+local stSum, stN, stOver, stOverN = 0, 0, 0, 0
 local shotAt, shotName = nil, 0
 local PSUM, PFR, BST = {a("gba_profSum")}, {a("gba_profFrames")}, {a("gba_blitStat")}
 local PROF, PCN, PCR, pseen = {1 if prof else 0}, {a("gba_pcN")}, {a("gba_pcRing")}, 0
@@ -85,6 +87,7 @@ local function body()
     local b = p - emu:read32(I + (k % 128) * 4)
     if k > 2 and k <= {frames} then
       tot = tot + 1
+      if STL > 0 then local st = emu:read32(STL + (k % 128) * 4); stSum = stSum + st; if st > 500 then stN = stN + 1 end; if b > 33333 then stOver = stOver + st; if st > 500 then stOverN = stOverN + 1 end end end
       if b > worst then worst = b; worstAt = k end
       if b > {os.environ.get("FR_THRESH","33333")} then over = over + 1; overList = overList .. " " .. k .. ":" .. math.floor(b / 100) / 10
         if PROF == 1 and n - seen == 1 then local t = ""; for i = 0, 11 do t = t .. " " .. i .. ":" .. (pdel[i] or 0) end; f:write("OVER " .. k .. " " .. math.floor(b / 100) / 10 .. " ms, prof us:" .. t .. {NL}) end end
@@ -115,6 +118,7 @@ local function body()
         f:write(bt .. {NL})
       end
     end
+    if STL > 0 then f:write("STALL (gfx_wait blocked on the pending flip): mean " .. math.floor(stSum / tot) .. " us a frame, " .. stN .. " frames over 0.5 ms; in the " .. over .. " slow frames: mean " .. (over > 0 and math.floor(stOver / over) or 0) .. " us, " .. stOverN .. " over 0.5 ms" .. {NL}) end
     if CONV > 0 then f:write("CONV (present's convert + sky, us a frame): " .. (emu:read32(CONV) // emu:read32(N)) .. {NL}) end
     f:write(t .. {NL} .. "over 33.3 ms (frame:ms):" .. overList .. {NL} .. "done" .. {NL})
     f:close()

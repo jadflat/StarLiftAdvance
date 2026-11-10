@@ -318,13 +318,15 @@ static void skyStart(const uint16_t *g) {   // at VBlank: line 0's colour now, t
 volatile uint32_t gba_convUs, gba_drawUs;
 static uint32_t s_tWait;
 volatile uint32_t gba_dbgN, gba_dbgPeriod[128], gba_dbgIdle[128], gba_idleUs;
+volatile uint32_t gba_dbgStall[128], gba_stallUs;   // time blocked in waitFlip (a flip pending at gfx_wait), per frame
 static uint32_t s_lastFlush;
 
 static void waitFlip() {
     if (!gba_flipPending) return;
     const uint32_t t0 = micros();
     while (gba_flipPending) gba_halt();
-    gba_idleUs += micros() - t0;
+    const uint32_t d = micros() - t0;
+    gba_idleUs += d; gba_stallUs += d;
 }
 
 // The framebuffer IS the back tile set: after present() it waits for its flip, so gfx_wait() holds the game until the VBlank has
@@ -368,7 +370,8 @@ static void present() {
     const uint32_t now = micros();
     gba_dbgPeriod[gba_dbgN & 127] = now - s_lastFlush;
     gba_dbgIdle[gba_dbgN & 127] = gba_idleUs;
-    gba_dbgN++; gba_idleUs = 0; s_lastFlush = now;
+    gba_dbgStall[gba_dbgN & 127] = gba_stallUs;
+    gba_dbgN++; gba_idleUs = 0; gba_stallUs = 0; s_lastFlush = now;
 }
 
 // a frame the game does not draw (a stage is loading): the picture, its layers and sprites stay as they are; counted for the tests
@@ -376,7 +379,8 @@ void gba_holdFrame() {
     const uint32_t now = micros();
     gba_dbgPeriod[gba_dbgN & 127] = now - s_lastFlush;
     gba_dbgIdle[gba_dbgN & 127] = gba_idleUs;
-    gba_dbgN++; gba_idleUs = 0; s_lastFlush = now;
+    gba_dbgStall[gba_dbgN & 127] = gba_stallUs;
+    gba_dbgN++; gba_idleUs = 0; gba_stallUs = 0; s_lastFlush = now;
 }
 
 void gfx_flushRectAsync(int, int, int, int) { present(); }
