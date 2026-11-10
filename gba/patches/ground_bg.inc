@@ -92,8 +92,8 @@ SLG_IWRAM static void gbgColumn(int X) {                                  // (in
 SLG_IWRAM static void gbgClearStrip(uint32_t *p, int y, int yz) {
     uint32_t C = 0;
     SlgEv *e = slgEv + y;
-    for (; y <= yz; y++, e++, p += GFX_FB_STRIDE / 4) { C |= e->a; e->a = 0; *p &= ~C; }
-    for (; y < SH; y++, p += GFX_FB_STRIDE / 4) *p = 0;
+    for (; y <= yz; y++, e++, p += FB_STEP_WY) { C |= e->a; e->a = 0; *p &= ~C; }
+    for (; y < SH; y++, p += FB_STEP_WY) *p = 0;
 }
 
 __attribute__((noinline)) static void bgGroundDraw() {
@@ -108,7 +108,7 @@ __attribute__((noinline)) static void bgGroundDraw() {
 #ifdef GBA_GROUNDCHECK
     void gbgCheck(); gbgCheck();
 #endif
-    uint32_t *fb = (uint32_t *)gfx_fb;
+    uint32_t *fb = FB_WORDS;
     for (int s = 0; s < SW / 8; s++) {
         const uint8_t *g = topA[3] + s * 8;
         int ya = SH, yz = 0;
@@ -119,7 +119,7 @@ __attribute__((noinline)) static void bgGroundDraw() {
             if (y0 < ya) ya = y0;
             if (y0 > yz) yz = y0;
         }
-        gbgClearStrip(fb + ya * (GFX_FB_STRIDE / 4) + s, ya, yz);
+        gbgClearStrip(fb + FB_WORD(s, ya), ya, yz);
     }
 }
 
@@ -136,7 +136,7 @@ void gbgCheck() {
         for (int y = topA[3][x]; y < SH; y++) {
             const int wx = cam + x, idx = map[(y >> 3) * 32 + ((wx >> 3) & 31)];
             const uint32_t row = gbgTile(idx)[y & 7];
-            const int bg = (row >> ((wx & 7) * 4)) & 15, fbp = (gfx_fb[y * GFX_FB_STRIDE + (x >> 1)] >> ((x & 1) * 4)) & 15;
+            const int bg = (row >> ((wx & 7) * 4)) & 15, fbp = (*FB_ADDR(x, y) >> ((x & 1) * 4)) & 15;
             if (bg != fbp) { if (!gba_gcBad++) gba_gcBadFirst = (uint32_t)(x << 16 | y << 8 | idx); x = SW; break; }
         }
     memcpy(gfx_fb, gba_gcSave, GFX_FB_BYTES);

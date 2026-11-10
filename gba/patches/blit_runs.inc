@@ -130,7 +130,7 @@ static bool bcBlit(const Rd &rd, int w, int h, int x, int y, bool flip, const ui
     int r = y < 0 ? -y : 0, r1 = h;
     if (y + r1 > SH) r1 = SH - y;
     const uint32_t *row = e->data + r * 2 * nw;
-    uint32_t *dst = (uint32_t *)gfx_fb + (y + r) * (GFX_FB_STRIDE / 4);
+    uint32_t *dst = FB_WORDS + FB_WY(y + r);
     const uint8_t *const clip = gba_clipY;                                       // (patch 04: behind a hills layer)
     uint8_t gmin[24], gmax[24];                                                  // per 8 columns: the clip's lowest and highest row
     const bool fastClip = clip && nw + 1 <= 24;
@@ -138,15 +138,15 @@ static bool bcBlit(const Rd &rd, int w, int h, int x, int y, bool flip, const ui
         for (int i = 0; i <= nw; i++) {
             const unsigned k = (unsigned)(wx + i);
             uint8_t lo = 255, hi = 0;
-            if (k < (unsigned)(GFX_FB_STRIDE / 4)) for (int j = 0; j < 8; j++) { const uint8_t v = clip[k * 8 + j]; if (v < lo) lo = v; if (v > hi) hi = v; }
+            if (k < (unsigned)(FB_NGROUPS)) for (int j = 0; j < 8; j++) { const uint8_t v = clip[k * 8 + j]; if (v < lo) lo = v; if (v > hi) hi = v; }
             gmin[i] = lo; gmax[i] = hi;
         }
     // (rows above every clip, or no clip: a tight loop over the words on screen; each word's carry from the one before)
-    int lowAll = clip ? (fastClip ? 255 : -1) : 9999, i0 = wx < 0 ? -wx : 0, i1 = GFX_FB_STRIDE / 4 - wx;
+    int lowAll = clip ? (fastClip ? 255 : -1) : 9999, i0 = wx < 0 ? -wx : 0, i1 = FB_NGROUPS - wx;
     if (i1 > nw + 1) i1 = nw + 1;
     if (fastClip) for (int i = i0; i < i1; i++) if (gmin[i] < lowAll) lowAll = gmin[i];
 #pragma clang loop unroll(disable)
-    for (; r < r1; r++, row += 2 * nw, dst += GFX_FB_STRIDE / 4) {
+    for (; r < r1; r++, row += 2 * nw, dst += FB_STEP_WY) {
         if (y + r < lowAll) {
             uint32_t pd = i0 ? row[i0 - 1] : 0, pm = i0 ? row[nw + i0 - 1] : 0;
             const int rs = 32 - s;
@@ -159,7 +159,7 @@ static bool bcBlit(const Rd &rd, int w, int h, int x, int y, bool flip, const ui
                 if (vm) {
                     asm("mov %0, %1, lsr %2" : "=r"(cd) : "r"(pd), "r"(rs));
                     const uint32_t vd = (a << s) | cd;
-                    uint32_t *const q = dst + wx + i;
+                    uint32_t *const q = dst + FB_GX(wx + i);
                     *q = vm == ~0u ? vd : (*q & ~vm) | (vd & vm);
                 }
                 pd = a; pm = m;
@@ -176,7 +176,7 @@ static bool bcBlit(const Rd &rd, int w, int h, int x, int y, bool flip, const ui
                 cd = s ? a >> (32 - s) : 0; cm = s ? m >> (32 - s) : 0;
             }
             const unsigned k = (unsigned)(wx + i);
-            if (!vm || k >= (unsigned)(GFX_FB_STRIDE / 4)) continue;
+            if (!vm || k >= (unsigned)(FB_NGROUPS)) continue;
             if (clip) {                                                          // only the columns still open at this row
                 const uint8_t *c = clip + k * 8;
                 const int yy = y + r;
@@ -189,7 +189,7 @@ static bool bcBlit(const Rd &rd, int w, int h, int x, int y, bool flip, const ui
                     if (!vm) continue;
                 }
             }
-            dst[k] = (dst[k] & ~vm) | (vd & vm);
+            dst[FB_GX(k)] = (dst[FB_GX(k)] & ~vm) | (vd & vm);
         }
     }
     return true;
@@ -249,7 +249,7 @@ RAMFUNC(blitRd) static void new_blitRd(Rd &rd, int w, int h, int x, int y, bool 
             continue;
         }
         const bool hvis = (unsigned)(yy - cl.y0) < (unsigned)(cl.y1 - cl.y0);  // gfx_hline's rows
-        uint8_t *const row = gfx_fb + yy * GFX_FB_STRIDE;
+        uint8_t *const row = FB_ROW(yy);
         // px: the edge of what is drawn so far (flipped: the left edge, moving left from x + w)
 #pragma clang loop unroll(disable)
         for (int c = 0, px = flip ? x + w : x; c < w;) {
@@ -266,7 +266,7 @@ RAMFUNC(blitRd) static void new_blitRd(Rd &rd, int w, int h, int x, int y, bool 
 #pragma clang loop unroll(disable)
                 for (int k = a; k < e; k++) {
                     if (yy >= clip[k]) continue;
-                    uint8_t *q = row + (k >> 1);
+                    uint8_t *q = FB_X(row, k);
                     *q = (k & 1) ? (uint8_t)((*q & 0x0F) | (col << 4)) : (uint8_t)((*q & 0xF0) | (col & 0x0F));
                 }
             } else if (n > 2) {                                                  // gfx_hline(x0, yy, n, col)
@@ -276,7 +276,7 @@ RAMFUNC(blitRd) static void new_blitRd(Rd &rd, int w, int h, int x, int y, bool 
                 const int e = x0 + n > SW ? SW : x0 + n;
 #pragma clang loop unroll(disable)
                 for (int k = x0 < 0 ? 0 : x0; k < e; k++) {
-                    uint8_t *q = row + (k >> 1);
+                    uint8_t *q = FB_X(row, k);
                     *q = (k & 1) ? (uint8_t)((*q & 0x0F) | (col << 4)) : (uint8_t)((*q & 0xF0) | col);
                 }
             }

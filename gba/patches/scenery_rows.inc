@@ -57,7 +57,7 @@ SLG_IWRAM static void slgStripLayer(uint32_t *p, int y, int ye, int yf, int yf1,
     SlgEv *e = slgEv + y;
     SlgEv *const end = slgEv + ye;
     for (;;) {
-        for (SlgEv *const stop = slgEv + yf; e < stop; e++, p += GFX_FB_STRIDE / 4) {
+        for (SlgEv *const stop = slgEv + yf; e < stop; e++, p += FB_STEP_WY) {
             A |= e->a; B |= e->b; E |= e->c;
             e->a = 0; e->b = 0; e->c = 0;
             const uint32_t on = A & ~E;
@@ -65,7 +65,7 @@ SLG_IWRAM static void slgStripLayer(uint32_t *p, int y, int ye, int yf, int yf1,
         }
         if (e >= end) break;
         e->a = 0; e->b = 0;                                                  // (the last tops and rim ends)
-        for (SlgEv *const stop = slgEv + yf1; e < stop; e++, p += GFX_FB_STRIDE / 4) *p = pat[SLG_ROW15(e)];
+        for (SlgEv *const stop = slgEv + yf1; e < stop; e++, p += FB_STEP_WY) *p = pat[SLG_ROW15(e)];
         A = B = ~0u;
         yf = ye;
     }
@@ -78,7 +78,7 @@ SLG_IWRAM static void slgStripGround(uint32_t *p, int y, const int *u, const uin
     uint32_t C0 = 0, C2 = 0, C3 = 0, C4 = 0;
     SlgEv *e = slgEv + y;
     for (int k = 2;; k++) {
-        for (SlgEv *const stop = slgEv + (k < 5 ? u[k * 2 - 4] : SH); e < stop; e++, p += GFX_FB_STRIDE / 4) {
+        for (SlgEv *const stop = slgEv + (k < 5 ? u[k * 2 - 4] : SH); e < stop; e++, p += FB_STEP_WY) {
             const uint32_t C1 = C0;
             C0 |= e->a; C2 |= e->b; C3 |= e->c; C4 |= e->d;
             e->a = 0; e->b = 0; e->c = 0; e->d = 0;
@@ -92,7 +92,7 @@ SLG_IWRAM static void slgStripGround(uint32_t *p, int y, const int *u, const uin
         if (e >= stop) continue;                                             // not uniform anywhere
         e->a = 0; e->b = 0; e->c = 0; e->d = 0;                              // (the last columns into band k)
         const uint32_t *q = pat + k * 32;
-        for (; e < stop; e++, p += GFX_FB_STRIDE / 4) *p = q[SLG_ROW15(e)];
+        for (; e < stop; e++, p += FB_STEP_WY) *p = q[SLG_ROW15(e)];
         C0 = C2 = ~0u;
         if (k >= 3) C3 = ~0u;
         if (k >= 4) C4 = ~0u;
@@ -140,7 +140,7 @@ SLG_IWRAM static void new_drawLayerCols(int L) {
     if (L == 0) slgColumns();
 #endif
     const uint32_t *const col = SLG_COL(L);
-    uint32_t *fb = (uint32_t *)gfx_fb;
+    uint32_t *fb = FB_WORDS;
     const uint32_t litW = lit * 0x11111111u, darkW = dark * 0x11111111u;
 #pragma clang loop unroll(disable)
     for (int s = 0; s < SW / 8; s++) {
@@ -167,7 +167,7 @@ SLG_IWRAM static void new_drawLayerCols(int L) {
             if (w >> 24) dm |= m;
         }
         if (!full || yf >= yf1) yf = yf1 = yb;
-        slgStripLayer(fb + ya * (GFX_FB_STRIDE / 4) + s, ya, yb, yf, yf1, (litW & ~dm) | (darkW & dm), slgPat[0][s & 1]);
+        slgStripLayer(fb + FB_WORD(s, ya), ya, yb, yf, yf1, (litW & ~dm) | (darkW & dm), slgPat[0][s & 1]);
     }
 }
 
@@ -177,7 +177,7 @@ SLG_IWRAM static void new_drawGroundCols() {
     const uint8_t LUT[5][4] = { { C_GNDL, C_GNDL, C_GNDL, C_GNDL }, { C_GND, C_GNDL, C_GNDL, C_GNDL }, { C_GND, C_GND, C_GND, C_GNDL },
                                 { crack, C_GND, C_GND, C_GND }, { crack, C_GNDD, C_GND, C_GNDD } };
     slgPatterns(cam, LUT, 5);
-    uint32_t *fb = (uint32_t *)gfx_fb;
+    uint32_t *fb = FB_WORDS;
 #pragma clang loop unroll(disable)
     for (int s = 0; s < SW / 8; s++) {
         const uint8_t *g = topA[3] + s * 8;
@@ -196,7 +196,7 @@ SLG_IWRAM static void new_drawGroundCols() {
         int u[6] = { yz + 3, ya + 12, yz + 12, ya + 28, yz + 28, SH };     // where bands 2, 3, 4 cover the strip
         for (int k = 0; k < 6; k++) if (u[k] > SH) u[k] = SH;
         for (int k = 0; k < 6; k += 2) if (u[k] > u[k + 1]) u[k] = u[k + 1];   // (none: start = end)
-        slgStripGround(fb + ya * (GFX_FB_STRIDE / 4) + s, ya, u, slgPat[0][s & 1]);
+        slgStripGround(fb + FB_WORD(s, ya), ya, u, slgPat[0][s & 1]);
     }
 }
 
@@ -232,7 +232,7 @@ static void scCompare(int L) {
         int ye = SH;
         if (L < 3) for (int j = L + 1; j < 4; j++) if (topA[j][x] < ye) ye = topA[j][x];
         for (int y = 0; y < SH; y++) {
-            const int o = y * GFX_FB_STRIDE + (x >> 1), sh = (x & 1) * 4;
+            const int o = FB_ADDR(x, y) - gfx_fb, sh = (x & 1) * 4;
             if (((gfx_fb[o] ^ (y < ye ? gba_scRef : gba_scSave)[o]) >> sh) & 15) {
                 if (!gba_scBad++) gba_scBadFirst = (uint32_t)(L << 16 | y << 8 | x);
                 return;

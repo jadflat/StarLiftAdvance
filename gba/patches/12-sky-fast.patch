@@ -81,12 +81,12 @@ __attribute__((section(".iwram.text"), noinline, target("arm"), minsize)) static
         if (w <= 0) continue;
         const int y = cy + r;
         if (y >= 0 && (free || y < mn[w < 2 ? 2 : w])) {
-            uint8_t *const row = gfx_fb + y * GFX_FB_STRIDE;
+            uint8_t *const row = FB_ROW(y);
             int a = cx - w + 3, b = cx + w - 3;
             if (a < 0) a = 0;
             if (b > SW) b = SW;
             if (b > a) {
-                uint8_t *q = row + (a >> 1);
+                uint8_t *q = FB_X(row, a);
                 if (a & 1) { *q = (uint8_t)((*q & 0x0F) | cl << 4); q++; a++; }
                 int n = (b - a) >> 1;
 #pragma clang loop unroll(disable)

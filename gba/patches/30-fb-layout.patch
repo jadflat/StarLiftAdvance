@@ -1,0 +1,401 @@
+# 30-fb-layout: every framebuffer access goes through the FB_* macros (CHGfx.h), so that a later column layout in VRAM
+# changes only their definitions. LINEAR here: each macro is the expression it replaced, the picture and the code the same.
+# Applied last. The patches before it (12, 13, 15 and the .inc files) already use the macros in the text they add.
+
+@@ lib/CHGfx/CHGfx.h
+<<<<<<<
+#define GFX_FB_BYTES     (GFX_FB_STRIDE * GFX_H)
+=======
+#define GFX_FB_BYTES     (GFX_FB_STRIDE * GFX_H)
+
+/* Framebuffer layout (GBA build): LINEAR, row after row, two pixels a byte. Every access to gfx_fb goes through these.
+ *   FB_ROW(y)        the first byte of row y            FB_X(row, x)    the byte of pixel x in a row pointer
+ *   FB_ADDR(x, y)    the byte of pixel (x, y)           FB_WORDS        gfx_fb as words (8 pixels a word)
+ *   FB_WY(y)         word index of row y's first word   FB_WORD(g, y)   word index of 8-pixel group g of row y
+ *   FB_GX(g)         word offset of group g in a row (FB_WORDS + FB_WY(y) + FB_GX(g))
+ *   FB_STEP_Y        bytes to the next row              FB_STEP_WY      words to the next row
+ *   FB_BCOL(b)       the top byte of byte column b (two pixel columns)
+ *   FB_STEP_X8       bytes to the next group of 8 pixels
+ *   FB_NGROUPS       groups of 8 pixels in a row        FB_ROW_BYTES    bytes in a row (a whole-row fill or copy)
+ *   FB_ROWS_BYTES(n) bytes of n rows from the top (a copy of the HUD) */
+#define FB_ROW(y)          (gfx_fb + (y) * GFX_FB_STRIDE)
+#define FB_X(row, x)       ((row) + ((x) >> 1))
+#define FB_BCOL(b)         (gfx_fb + (b))     /* top of byte column b (pixels 2b, 2b+1) */
+#define FB_ADDR(x, y)      (FB_X(FB_ROW(y), (x)))
+#define FB_WORDS           ((uint32_t *)gfx_fb)
+#define FB_WY(y)           ((y) * (GFX_FB_STRIDE / 4))
+#define FB_GX(g)           (g)
+#define FB_WORD(g, y)      (FB_WY(y) + FB_GX(g))
+#define FB_STEP_Y          GFX_FB_STRIDE
+#define FB_STEP_WY         (GFX_FB_STRIDE / 4)
+#define FB_STEP_X8         4
+#define FB_NGROUPS         (GFX_FB_STRIDE / 4)
+#define FB_ROW_BYTES       GFX_FB_STRIDE
+#define FB_ROWS_BYTES(n)   ((n) * GFX_FB_STRIDE)
+>>>>>>>
+
+@@ lib/CHGfx/CHGfx_internal.h
+<<<<<<<
+static GFX_INLINE uint8_t *gfx__row(int y) { return gfx_fb + y * GFX_FB_STRIDE; }
+=======
+static GFX_INLINE uint8_t *gfx__row(int y) { return FB_ROW(y); }
+>>>>>>>
+
+@@ lib/CHGfx/CHGfx_internal.h
+<<<<<<<
+    uint8_t *p = row + (x >> 1);
+=======
+    uint8_t *p = FB_X(row, x);
+>>>>>>>
+
+@@ lib/CHGfx/CHGfx_internal.h
+<<<<<<<
+    uint8_t *p = row + (x0 >> 1);
+=======
+    uint8_t *p = FB_X(row, x0);
+>>>>>>>
+
+@@ lib/CHGfx/CHGfx_draw.cpp
+<<<<<<<
+    uint8_t b = rowPtr(y)[x >> 1];
+=======
+    uint8_t b = FB_ADDR(x, y)[0];
+>>>>>>>
+
+@@ lib/CHGfx/CHGfx_draw.cpp
+<<<<<<<
+    uint32_t *d = (uint32_t *)gfx_fb;
+=======
+    uint32_t *d = FB_WORDS;
+>>>>>>>
+
+@@ lib/CHGfx/CHGfx_draw.cpp
+<<<<<<<
+    uint8_t *p = row + (x0 >> 1);
+=======
+    uint8_t *p = FB_X(row, x0);
+>>>>>>>
+
+@@ lib/CHGfx/CHGfx_draw.cpp
+<<<<<<<
+    uint8_t *p = rowPtr(y) + (x >> 1);
+=======
+    uint8_t *p = FB_ADDR(x, y);
+>>>>>>>
+
+@@ lib/CHGfx/CHGfx_draw.cpp
+<<<<<<<
+        while (h--) { *p = (uint8_t)((*p & 0x0F) | hi); p += GFX_FB_STRIDE; }
+=======
+        while (h--) { *p = (uint8_t)((*p & 0x0F) | hi); p += FB_STEP_Y; }
+>>>>>>>
+
+@@ lib/CHGfx/CHGfx_draw.cpp
+<<<<<<<
+        while (h--) { *p = (uint8_t)((*p & 0xF0) | c); p += GFX_FB_STRIDE; }
+=======
+        while (h--) { *p = (uint8_t)((*p & 0xF0) | c); p += FB_STEP_Y; }
+>>>>>>>
+
+@@ lib/CHGfx/CHGfx_draw.cpp
+<<<<<<<
+            uint8_t *dp = dRow + (x >> 1);
+            for (int i = 0; i < wholeBytes; i++) {
+=======
+            uint8_t *dp = FB_X(dRow, x);
+            for (int i = 0; i < wholeBytes; i++) {
+>>>>>>>
+
+@@ lib/CHGfx/CHGfx_draw.cpp
+<<<<<<<
+            }
+            s += srcStride;
+            dRow += GFX_FB_STRIDE;
+        }
+        return;
+=======
+            }
+            s += srcStride;
+            dRow += FB_STEP_Y;
+        }
+        return;
+>>>>>>>
+
+@@ lib/CHGfx/CHGfx_draw.cpp
+<<<<<<<
+            uint8_t *dp = dRow + (x >> 1);
+            for (int i = 0; i < wholeBytes; i++) dp[i] = sp[i];
+            if (w & 1) dp[wholeBytes] = (uint8_t)((dp[wholeBytes] & 0xF0) | (sp[wholeBytes] & 0x0F));
+            s += srcStride;
+            dRow += GFX_FB_STRIDE;
+        }
+        return;
+=======
+            uint8_t *dp = FB_X(dRow, x);
+            for (int i = 0; i < wholeBytes; i++) dp[i] = sp[i];
+            if (w & 1) dp[wholeBytes] = (uint8_t)((dp[wholeBytes] & 0xF0) | (sp[wholeBytes] & 0x0F));
+            s += srcStride;
+            dRow += FB_STEP_Y;
+        }
+        return;
+>>>>>>>
+
+@@ lib/CHGfx/CHGfx_draw.cpp
+<<<<<<<
+            uint8_t *q = dp + (dxp >> 1);
+=======
+            uint8_t *q = FB_X(dp, dxp);
+>>>>>>>
+
+@@ lib/CHGfx/CHGfx_draw.cpp
+<<<<<<<
+        dRow += GFX_FB_STRIDE;
+    }
+=======
+        dRow += FB_STEP_Y;
+    }
+>>>>>>>
+
+@@ lib/CHGfx/CHGfx_draw.cpp
+<<<<<<<
+        uint8_t *p = base + (px >> 1);
+=======
+        uint8_t *p = FB_X(base, px);
+>>>>>>>
+
+@@ lib/CHGfx/CHGfx_draw.cpp
+<<<<<<<
+            for (; bits; bits >>= 1, p += GFX_FB_STRIDE)
+                if (bits & 1) *p = (uint8_t)((*p & 0x0F) | v);
+=======
+            for (; bits; bits >>= 1, p += FB_STEP_Y)
+                if (bits & 1) *p = (uint8_t)((*p & 0x0F) | v);
+>>>>>>>
+
+@@ lib/CHGfx/CHGfx_draw.cpp
+<<<<<<<
+            for (; bits; bits >>= 1, p += GFX_FB_STRIDE)
+                if (bits & 1) *p = (uint8_t)((*p & 0xF0) | c);
+=======
+            for (; bits; bits >>= 1, p += FB_STEP_Y)
+                if (bits & 1) *p = (uint8_t)((*p & 0xF0) | c);
+>>>>>>>
+
+@@ lib/CHGame/chgame/Draw.cpp
+<<<<<<<
+        uint8_t *row = gfx_fb + yy * GFX_FB_STRIDE;
+        // Pixels where (px + yy + phase) is even get the colour.
+=======
+        uint8_t *row = FB_ROW(yy);
+        // Pixels where (px + yy + phase) is even get the colour.
+>>>>>>>
+
+@@ lib/CHGame/chgame/Draw.cpp
+<<<<<<<
+        if (i & 1) { if (m == 0xF0) row[i >> 1] = (uint8_t)((row[i >> 1] & 0x0F) | (c << 4)); i++; }
+=======
+        if (i & 1) { if (m == 0xF0) FB_X(row, i)[0] = (uint8_t)((FB_X(row, i)[0] & 0x0F) | (c << 4)); i++; }
+>>>>>>>
+
+@@ lib/CHGame/chgame/Draw.cpp
+<<<<<<<
+        uint8_t *p = row + (i >> 1), *e = row + ((x + w) >> 1);
+=======
+        uint8_t *p = FB_X(row, i), *e = FB_X(row, x + w);
+>>>>>>>
+
+@@ lib/CHGame/chgame/Draw.cpp
+<<<<<<<
+        uint8_t *row = gfx_fb + (y + j) * GFX_FB_STRIDE;
+        int i = x;
+        if (i & 1) { uint8_t b = row[i >> 1]; row[i >> 1] = (uint8_t)((b & 0x0F) | (m[b >> 4] << 4)); i++; }
+        for (; i + 1 < x + w; i += 2) { uint8_t b = row[i >> 1]; row[i >> 1] = (uint8_t)(m[b & 15] | (m[b >> 4] << 4)); }
+        if (i < x + w) { uint8_t b = row[i >> 1]; row[i >> 1] = (uint8_t)((b & 0xF0) | m[b & 15]); }
+=======
+        uint8_t *row = FB_ROW(y + j);
+        int i = x;
+        if (i & 1) { uint8_t b = FB_X(row, i)[0]; FB_X(row, i)[0] = (uint8_t)((b & 0x0F) | (m[b >> 4] << 4)); i++; }
+        for (; i + 1 < x + w; i += 2) { uint8_t b = FB_X(row, i)[0]; FB_X(row, i)[0] = (uint8_t)(m[b & 15] | (m[b >> 4] << 4)); }
+        if (i < x + w) { uint8_t b = FB_X(row, i)[0]; FB_X(row, i)[0] = (uint8_t)((b & 0xF0) | m[b & 15]); }
+>>>>>>>
+
+@@ lib/CHGame/chgame/Draw.cpp
+<<<<<<<
+            uint8_t *row = gfx_fb + (y + j) * GFX_FB_STRIDE;
+=======
+            uint8_t *row = FB_ROW(y + j);
+>>>>>>>
+
+@@ lib/CHGame/chgame/Draw.cpp
+<<<<<<<
+            uint8_t *row = gfx_fb + yy * GFX_FB_STRIDE;
+=======
+            uint8_t *row = FB_ROW(yy);
+>>>>>>>
+
+@@ lib/CHGame/chgame/Draw.cpp
+<<<<<<<
+    uint8_t *row = gfx_fb + y * GFX_FB_STRIDE;
+    for (int x = x0; x < x1; x++, u += du, v += dv) {
+=======
+    uint8_t *row = FB_ROW(y);
+    for (int x = x0; x < x1; x++, u += du, v += dv) {
+>>>>>>>
+
+@@ lib/CHGame/chgame/Draw.cpp
+<<<<<<<
+        uint8_t *p = gfx_fb + yy * GFX_FB_STRIDE + (x >> 1);
+        for (; bits; bits >>= 1, yy++, p += GFX_FB_STRIDE)
+=======
+        uint8_t *p = FB_ADDR(x, yy);
+        for (; bits; bits >>= 1, yy++, p += FB_STEP_Y)
+>>>>>>>
+
+@@ lib/CHGame/chgame/Draw.cpp
+<<<<<<<
+        uint8_t *row = gfx_fb + y * GFX_FB_STRIDE;
+=======
+        uint8_t *row = FB_ROW(y);
+>>>>>>>
+
+@@ lib/CHGame/chgame/Draw.cpp
+<<<<<<<
+            if ((bits & 0x8000) && xx >= k.x0 && xx < k.x1) plot(row + (xx >> 1), xx, c);
+=======
+            if ((bits & 0x8000) && xx >= k.x0 && xx < k.x1) plot(FB_X(row, xx), xx, c);
+>>>>>>>
+
+@@ lib/CHGame/chgame/Mask.cpp
+<<<<<<<
+    uint8_t *fb = gfx_fb + y * GFX_FB_STRIDE;
+=======
+    uint8_t *fb = FB_ROW(y);
+>>>>>>>
+
+@@ lib/CHGame/chgame/Mask.cpp
+<<<<<<<
+            uint8_t &q = fb[xx >> 1];
+=======
+            uint8_t &q = FB_X(fb, xx)[0];
+>>>>>>>
+
+@@ lib/CHGame/chgame/Shake.cpp
+<<<<<<<
+    const int W = GFX_FB_STRIDE / 4;
+=======
+    const int W = FB_NGROUPS;
+>>>>>>>
+
+@@ lib/CHGame/chgame/Shake.cpp
+<<<<<<<
+        uint32_t *d = (uint32_t *)(gfx_fb + y * GFX_FB_STRIDE);
+        const uint32_t *s = (const uint32_t *)(gfx_fb + sy * GFX_FB_STRIDE);
+=======
+        uint32_t *d = (uint32_t *)FB_ROW(y);
+        const uint32_t *s = (const uint32_t *)FB_ROW(sy);
+>>>>>>>
+
+@@ sketch.cpp
+<<<<<<<
+    uint8_t *b = gfx_fb + y * GFX_FB_STRIDE + (x >> 1);
+=======
+    uint8_t *b = FB_ADDR(x, y);
+>>>>>>>
+
+@@ sketch.cpp
+<<<<<<<
+    for (int y = TOP; y < low; y++) memset(gfx_fb + y * GFX_FB_STRIDE, C_SKY0 << 4 | C_SKY0, GFX_FB_STRIDE);
+=======
+    for (int y = TOP; y < low; y++) memset(FB_ROW(y), C_SKY0 << 4 | C_SKY0, FB_ROW_BYTES);
+>>>>>>>
+
+@@ sketch.cpp
+<<<<<<<
+        memset(gfx_fb + y * GFX_FB_STRIDE, v, GFX_FB_STRIDE);
+=======
+        memset(FB_ROW(y), v, FB_ROW_BYTES);
+>>>>>>>
+
+@@ sketch.cpp
+<<<<<<<
+            uint8_t *b = gfx_fb + top * GFX_FB_STRIDE + (x >> 1);   // straight into the two bytes of the four columns
+=======
+            uint8_t *b = FB_ADDR(x, top);   // straight into the two bytes of the four columns
+>>>>>>>
+
+@@ sketch.cpp
+<<<<<<<
+RAMFUNC(colFill) static void colFill(uint8_t *p, uint8_t keep, uint8_t v, int n) { for (; n > 0; n--, p += GFX_FB_STRIDE) *p = (uint8_t)((*p & keep) | v); }
+=======
+RAMFUNC(colFill) static void colFill(uint8_t *p, uint8_t keep, uint8_t v, int n) { for (; n > 0; n--, p += FB_STEP_Y) *p = (uint8_t)((*p & keep) | v); }
+>>>>>>>
+
+@@ sketch.cpp
+<<<<<<<
+    for (; y < y1; y++, p += GFX_FB_STRIDE) *p = (uint8_t)((*p & keep) | (lut[tc[y & 15]] << sh));
+=======
+    for (; y < y1; y++, p += FB_STEP_Y) *p = (uint8_t)((*p & keep) | (lut[tc[y & 15]] << sh));
+>>>>>>>
+
+@@ sketch.cpp
+<<<<<<<
+        uint8_t *p = gfx_fb + y0 * GFX_FB_STRIDE + (x >> 1);
+=======
+        uint8_t *p = FB_ADDR(x, y0);
+>>>>>>>
+
+@@ sketch.cpp
+<<<<<<<
+        p += rim * GFX_FB_STRIDE;
+=======
+        p += rim * FB_STEP_Y;
+>>>>>>>
+
+@@ sketch.cpp
+<<<<<<<
+    for (; y < y1; y++, p += GFX_FB_STRIDE) *p = (uint8_t)(la[ta[y & 15]] | (lb[tb[y & 15]] << 4));
+=======
+    for (; y < y1; y++, p += FB_STEP_Y) *p = (uint8_t)(la[ta[y & 15]] | (lb[tb[y & 15]] << 4));
+>>>>>>>
+
+@@ sketch.cpp
+<<<<<<<
+            colTex(col + ya * GFX_FB_STRIDE, hi ? 0x0F : 0xF0, hi ? 4 : 0, ya, yb, LUT[b], tc[hi]);
+=======
+            colTex(col + ya * FB_STEP_Y, hi ? 0x0F : 0xF0, hi ? 4 : 0, ya, yb, LUT[b], tc[hi]);
+>>>>>>>
+
+@@ sketch.cpp
+<<<<<<<
+            colPair(col + y * GFX_FB_STRIDE, y, ye, LUT[ba], tc[0], LUT[bb], tc[1]);
+=======
+            colPair(col + y * FB_STEP_Y, y, ye, LUT[ba], tc[0], LUT[bb], tc[1]);
+>>>>>>>
+
+@@ sketch.cpp
+<<<<<<<
+static uint8_t hudCache[TOP * GFX_FB_STRIDE] __attribute__((aligned(4), section(".ewram")));   // the HUD's rows as last drawn, bar the moving scanner marks
+=======
+static uint8_t hudCache[FB_ROWS_BYTES(TOP)] __attribute__((aligned(4), section(".ewram")));   // the HUD's rows as last drawn, bar the moving scanner marks
+>>>>>>>
+
+@@ sketch.cpp
+<<<<<<<
+            uint8_t *q = gfx_fb + line[i] * GFX_FB_STRIDE + (x >> 1);
+=======
+            uint8_t *q = FB_ADDR(x, line[i]);
+>>>>>>>
+
+@@ sketch.cpp
+<<<<<<<
+        for (int y = TOP; y < SH; y += 2) memset(gfx_fb + y * GFX_FB_STRIDE, C_INK << 4 | C_INK, GFX_FB_STRIDE);   // the scene dimmed by scan lines
+=======
+        for (int y = TOP; y < SH; y += 2) memset(FB_ROW(y), C_INK << 4 | C_INK, FB_ROW_BYTES);   // the scene dimmed by scan lines
+>>>>>>>
+
+@@ sketch.cpp
+<<<<<<<
+        uint8_t *col = gfx_fb + (xb);
+=======
+        uint8_t *col = FB_BCOL(xb);
+>>>>>>>

@@ -22,9 +22,9 @@ static void skyObjects_() {           // GBA: drawSkyObjects() is in hills_bg.in
 // one aurora curtain, four columns (two bytes) wide: three rows of green, then a checker (green on row 3, then the accent)
 __attribute__((section(".iwram.text"), noinline, target("arm"))) static void auroraCurtain(uint8_t *b, int len, int ph) {
     const uint8_t g2 = (uint8_t)(C_GREEN << 4 | C_GREEN);
-    b[0] = b[1] = g2; b += GFX_FB_STRIDE; b[0] = b[1] = g2; b += GFX_FB_STRIDE; b[0] = b[1] = g2; b += GFX_FB_STRIDE;
+    b[0] = b[1] = g2; b += FB_STEP_Y; b[0] = b[1] = g2; b += FB_STEP_Y; b[0] = b[1] = g2; b += FB_STEP_Y;
 #pragma clang loop unroll(disable)
-    for (int i = 3; i < len; i++, ph++, b += GFX_FB_STRIDE) {
+    for (int i = 3; i < len; i++, ph++, b += FB_STEP_Y) {
         const uint32_t c = i < 4 ? C_GREEN : C_ACC;
         if (ph & 1) { b[0] = (uint8_t)((b[0] & 0x0F) | c << 4); b[1] = (uint8_t)((b[1] & 0x0F) | c << 4); }
         else { b[0] = (uint8_t)((b[0] & 0xF0) | c); b[1] = (uint8_t)((b[1] & 0xF0) | c); }

@@ -33,7 +33,7 @@ __attribute__((noinline)) static bool skyObj(const CSpr &s, int x, int y, const 
     if (!e) return false;
     const int nw = e->nw, y0 = y < 0 ? 0 : y, y1 = y + s.h > SH ? SH : y + s.h, w0 = x < 0 ? 0 : x >> 3, w1 = ((x + s.w > SW ? SW : x + s.w) + 7) >> 3;
     const uint8_t *const clip = gba_clipY;
-    uint8_t cmin[GFX_FB_STRIDE / 4], cmax[GFX_FB_STRIDE / 4];                     // per 8 columns: the clip's lowest and highest row
+    uint8_t cmin[FB_NGROUPS], cmax[FB_NGROUPS];                     // per 8 columns: the clip's lowest and highest row
     int ry = y0;
     for (int i = w0; i < w1; i++) {
         int lo = 255, hi = 255;
@@ -47,15 +47,15 @@ __attribute__((noinline)) static bool skyObj(const CSpr &s, int x, int y, const 
     gba_starsOn = 0;
     if (stars) for (int r = y0; r < y1 && r < ry; r++) {
         if (clip && !gba_starRow[r]) continue;
-        uint32_t *const q = (uint32_t *)gfx_fb + r * (GFX_FB_STRIDE / 4);
+        uint32_t *const q = FB_WORDS + FB_WY(r);
         const uint32_t *const m = e->data + (r - y) * 2 * nw + nw;
         for (int i = w0; i < w1; i++) {
-            if (!q[i] || r >= cmax[i]) continue;
+            if (!q[FB_GX(i)] || r >= cmax[i]) continue;
             const int k = i - wx;
             uint32_t v = (unsigned)k < (unsigned)nw ? m[k] << sh : 0;
             if (sh && (unsigned)(k - 1) < (unsigned)nw) v |= m[k - 1] >> (32 - sh);
             if (r >= cmin[i]) { uint32_t open = 0; for (int j = 0; j < 8; j++) if (r < clip[i * 8 + j]) open |= 15u << (j * 4); v &= open; }
-            q[i] &= ~v;
+            q[FB_GX(i)] &= ~v;
         }
     }
     const uint32_t key[5] = { rd.off, lut4[0], lut4[1], lut4[2], lut4[3] };

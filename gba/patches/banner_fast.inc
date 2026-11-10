@@ -5,7 +5,7 @@
 // each font row twice. The same pixels: the blocks are one colour, so their order does not matter. Anything unusual (a
 // clip rectangle, a line break, off the picture) goes to text35x2 as before.
 #include "CHGfx_internal.h"
-extern "C" { uint32_t gba_banM[8][GFX_FB_STRIDE / 4]; char gba_banS[32]; int16_t gba_banX; uint8_t gba_banW0, gba_banW1; }   // (EWRAM)
+extern "C" { uint32_t gba_banM[8][FB_NGROUPS]; char gba_banS[32]; int16_t gba_banX; uint8_t gba_banW0, gba_banW1; }   // (EWRAM)
 static void gbaBanner(int x, int y, const char *s, uint8_t c) {
     const GfxClip cl = gfx__clip;
     int n = 0;
@@ -30,8 +30,8 @@ static void gbaBanner(int x, int y, const char *s, uint8_t c) {
     const uint32_t cw = (c & 15) * 0x11111111u;
     for (int r = 0; r < 8; r++) {
         const uint32_t *const m = gba_banM[r];
-        uint32_t *q = (uint32_t *)gfx_fb + (y + 2 * r) * (GFX_FB_STRIDE / 4);
+        uint32_t *q = FB_WORDS + FB_WY(y + 2 * r);
         for (int i = gba_banW0; i < gba_banW1; i++)
-            if (const uint32_t v = m[i]) { q[i] = (q[i] & ~v) | (cw & v); q[i + GFX_FB_STRIDE / 4] = (q[i + GFX_FB_STRIDE / 4] & ~v) | (cw & v); }
+            if (const uint32_t v = m[i]) { q[FB_GX(i)] = (q[FB_GX(i)] & ~v) | (cw & v); q[FB_GX(i) + FB_STEP_WY] = (q[FB_GX(i) + FB_STEP_WY] & ~v) | (cw & v); }
     }
 }
