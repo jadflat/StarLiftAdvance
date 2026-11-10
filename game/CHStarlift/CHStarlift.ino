@@ -505,7 +505,7 @@ static void genStage() {
         spawnEn(E_TURRET, x, groundAt(x) - 3);
     }
     for (int k = 0; k < PLR.worms; k++) if (Enemy *e = spawnEn(E_WORM, 500 + k * 700, 100 + WDY)) e->hp = 12;
-    if ((stage & 3) == 3) if (Enemy *e = spawnEn(E_MOTHER, alienX + 20, 34 + WDY)) e->hp = (uint8_t)(10 + stage);
+    if ((stage & 3) == 3) if (Enemy *e = spawnEn(E_MOTHER, alienX + 20, 34 + WDY)) e->hp = (uint8_t)(6 + stage / 2);   // easier (was 10 + stage)
     buildTile();
     memset(shots, 0, sizeof shots); memset(es, 0, sizeof es); memset(pt, 0, sizeof pt); memset(booms, 0, sizeof booms); memset(pops, 0, sizeof pops);
     placeLanderOnPad(startPadX);
@@ -1175,9 +1175,9 @@ static void updateEnemies() {
             e.vx = e.vy = 0;
             {
                 const int v = (stage >> 2) & 3;                               // the boss: 0 mothership, 1 hive, 2 prism warship, 3 dreadnought
-                if (lst != 2 && absi(X - ex) < 120 && (frameNo % (v == 3 ? 40 : 60)) == 0) {
-                    eshot(ex - 8, ey + 6, X, Y, 20, 1); eshot(ex + 8, ey + 6, X, Y, 20, 1);
-                    if (v == 2) eshot(ex, ey + 6, X, Y + 40, 20, 1);          // a spread
+                if (lst != 2 && absi(X - ex) < 120 && (frameNo % (v == 3 ? 70 : 100)) == 0) {   // slower, fewer shots (was 40/60, speed 20)
+                    eshot(ex - 8, ey + 6, X, Y, 16, 1); eshot(ex + 8, ey + 6, X, Y, 16, 1);
+                    if (v == 2) eshot(ex, ey + 6, X, Y + 40, 16, 1);          // a spread
                 }
                 if ((frameNo % 450) == 150 && fliers < 4 && spawnEn(v == 1 || (v == 3 && (frameNo & 256)) ? E_STINGER : v == 2 ? E_MINE : E_UFO, ex, ey + 8)) sfx(S_UFO);
             }
@@ -1208,7 +1208,7 @@ static void updateEnemies() {
                 continue;
             }
             if (e.kind == E_MOTHER) { if (!bumpT) { damage(1); sfx(S_CLANG); shake = 4; bumpT = 30; } lvx = X >= nx ? 200 : -200; lvy = 220; continue; }   // a boss can't be rammed: the lander bounces off, hurt
-            damage(e.kind == E_MINE ? 2 : 1);
+            if (e.kind == E_MINE || ++chip >= 3) { chip = 0; damage(1); } else { sfx(S_CLANG); shake = 3; }   // ramming small fry chips like a shot; a mine 1 pip
             killEn(e);
         }
     }
