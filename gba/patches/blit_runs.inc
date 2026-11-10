@@ -114,8 +114,31 @@ static bool bcBlit(const Rd &rd, int w, int h, int x, int y, bool flip, const ui
             if (k < (unsigned)(GFX_FB_STRIDE / 4)) for (int j = 0; j < 8; j++) { const uint8_t v = clip[k * 8 + j]; if (v < lo) lo = v; if (v > hi) hi = v; }
             gmin[i] = lo; gmax[i] = hi;
         }
+    // (rows above every clip, or no clip: a tight loop over the words on screen; each word's carry from the one before)
+    int lowAll = clip ? (fastClip ? 255 : -1) : 9999, i0 = wx < 0 ? -wx : 0, i1 = GFX_FB_STRIDE / 4 - wx;
+    if (i1 > nw + 1) i1 = nw + 1;
+    if (fastClip) for (int i = i0; i < i1; i++) if (gmin[i] < lowAll) lowAll = gmin[i];
 #pragma clang loop unroll(disable)
     for (; r < r1; r++, row += 2 * nw, dst += GFX_FB_STRIDE / 4) {
+        if (y + r < lowAll) {
+            uint32_t pd = i0 ? row[i0 - 1] : 0, pm = i0 ? row[nw + i0 - 1] : 0;
+            const int rs = 32 - s;
+#pragma clang loop unroll(disable)
+            for (int i = i0; i < i1; i++) {
+                uint32_t a = 0, m = 0, cd, cm;
+                if (i < nw) { a = row[i]; m = row[nw + i]; }
+                asm("mov %0, %1, lsr %2" : "=r"(cm) : "r"(pm), "r"(rs));      // (ARM: a shift by 32 gives 0)
+                const uint32_t vm = (m << s) | cm;
+                if (vm) {
+                    asm("mov %0, %1, lsr %2" : "=r"(cd) : "r"(pd), "r"(rs));
+                    const uint32_t vd = (a << s) | cd;
+                    uint32_t *const q = dst + wx + i;
+                    *q = vm == ~0u ? vd : (*q & ~vm) | (vd & vm);
+                }
+                pd = a; pm = m;
+            }
+            continue;
+        }
         uint32_t cd = 0, cm = 0;
 #pragma clang loop unroll(disable)
         for (int i = 0; i <= nw; i++) {
