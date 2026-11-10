@@ -1,0 +1,15 @@
+# 18-sky-stars: the sky sprite's covered-pixel clear (patch 17, struct_obj.inc's skyObj) only where there can be pixels.
+#
+# All that is drawn under the sky object before it is the stars (drawSky leaves the sky clear above the hills), and a star
+# is one pixel in a row that depends only on its number (patch 12's gba_starY). So the stars note that they were drawn
+# (gba_starsOn) and which rows they are in (gba_starRow), and skyObj looks only at those rows: none at all under a sun, a
+# giant or a ringed planet (stages 2, 4, 5, 6: no stars), about half of them under the Earth, the twin suns and the moons.
+# The framebuffer is the same, word for word (frames.py snaps of stages 1, 5, 7, 8 against the build before).
+
+@@ sketch.cpp
+<<<<<<<
+        if (!gba_starY[0]) for (int i = 0; i < 40; i++) { gba_starH[i] = hash((uint32_t)i * 7777u + 1u); gba_starY[i] = (uint8_t)(TOP + 2 + (int)((gba_starH[i] >> 8) % 60)); }
+=======
+        if (!gba_starY[0]) for (int i = 0; i < 40; i++) { gba_starH[i] = hash((uint32_t)i * 7777u + 1u); gba_starY[i] = (uint8_t)(TOP + 2 + (int)((gba_starH[i] >> 8) % 60)); gba_starRow[gba_starY[i]] = 1; }
+        gba_starsOn = 1;                                        // GBA: patch 18-sky-stars
+>>>>>>>

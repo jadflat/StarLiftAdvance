@@ -18,6 +18,7 @@ static bool blitObj(const CSpr &s, int x, int y, bool flip, const uint8_t *map, 
 // GBA, patch 17-sky-obj: the sky object (a planet, a sun, moons) as a priority 3 sprite: behind every background layer
 // (the hills cover it as gba_clipY did) and the picture (what is drawn later still covers it). Pixels drawn before it (the
 // stars) where its pixels would have gone (opaque, above the clip) are cleared, as the blit would have covered them.
+extern "C" { uint8_t gba_starsOn, gba_starRow[GFX_H]; }                        // (EWRAM) stars were drawn this frame; the rows they are in
 int gba_skyBegin(const uint32_t *key); void gba_skyFail(); volatile uint32_t *gba_skyTiles(int off); bool gba_skySpr(int shape, int size, int x, int y, int off);
 __attribute__((noinline)) static bool skyObj(const CSpr &s, int x, int y, const uint8_t *map) {
     if (!card::ok() || x >= SW || x + s.w <= 0 || y >= SH || y + s.h <= 0) return true;
@@ -40,7 +41,12 @@ __attribute__((noinline)) static bool skyObj(const CSpr &s, int x, int y, const 
         cmin[i] = (uint8_t)lo; cmax[i] = (uint8_t)hi; if (hi > ry) ry = hi;
     }
     const int sh = (x & 7) * 4, wx = x >> 3;                                    // (word i holds the picture's words i - wx and i - wx - 1)
-    for (int r = y0; r < y1 && r < ry; r++) {
+    // (patch 18: above the hills only the stars are drawn before this, so only their rows are looked at, and none when
+    // there are no stars; without a hills clip, every row as before)
+    const bool stars = gba_starsOn || !clip;
+    gba_starsOn = 0;
+    if (stars) for (int r = y0; r < y1 && r < ry; r++) {
+        if (clip && !gba_starRow[r]) continue;
         uint32_t *const q = (uint32_t *)gfx_fb + r * (GFX_FB_STRIDE / 4);
         const uint32_t *const m = e->data + (r - y) * 2 * nw + nw;
         for (int i = w0; i < w1; i++) {
