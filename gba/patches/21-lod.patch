@@ -11,12 +11,15 @@ static int lastCam;
 #define GBA_LOD_T1 14
 #define GBA_LOD_T2 28
 #endif
+#ifndef GBA_LOD_NOTIME
+#define GBA_LOD_NOTIME 0                                          // 1: the slow-frame trigger off (pictures of two builds compare)
+#endif
 #ifndef GBA_LOD_VISIBLE
 #define GBA_LOD_VISIBLE 0                                         // 1: busy scenes also drop the clouds and plants (they pop in and out)
 #endif
 static uint8_t gbaLod, gbaLodHold;                               // GBA: patch 21-lod
 static void gbaLodUpdate(uint32_t us) {
-    const uint8_t want = us > 27000 ? 2 : us > 22000 ? 1 : 0;
+    const uint8_t want = GBA_LOD_NOTIME ? 0 : us > 27000 ? 2 : us > 22000 ? 1 : 0;
     if (want >= gbaLod && want) { gbaLod = want; gbaLodHold = 8; }
     else if (gbaLodHold) gbaLodHold--;
     else gbaLod = want;

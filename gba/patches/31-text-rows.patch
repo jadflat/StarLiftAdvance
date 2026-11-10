@@ -1,0 +1,75 @@
+# 31-text-rows: text35 draws a line a row at a time, one masked word store per 8-pixel group (the HUD's text was ~4 ms a frame).
+
+@@ lib/CHGame/chgame/Draw.cpp
+<<<<<<<
+CHGAME_RAMFUNC(text35) int text35(int x, int y, const char *str, uint8_t c) {
+    int x0 = x;
+    for (; *str; str++) {
+        char ch = *str;
+        if (ch == '
+') { x = x0; y += 7; continue; }
+        if (ch == '~') { x += 2; continue; }
+        const uint8_t *g = glyph35(ch);
+        if (g) glyph(x, y, g, 3, c);
+        x += 4;
+    }
+    return x - x0;
+}
+=======
+static const uint16_t T35M[8] = {0, 0xF, 0xF0, 0xFF, 0xF00, 0xF0F, 0xFF0, 0xFFF};
+/* GBA: a line of text a row at a time: the nibble masks of every glyph in the row are collected per group of 8 pixels
+ * and each group is one masked word store (a pixel at a time, a halfword read-modify-write each, was ~4 ms a frame). */
+CHGAME_RAMFUNC(text35) int text35(int x, int y, const char *str, uint8_t c) {
+    int x0 = x;
+    const GfxClip &k = CLIP;
+    const uint32_t cc = (uint32_t)(c & 0x0F) * 0x11111111u;
+    for (;;) {
+        uint32_t pk[40]; int16_t px[40]; int n = 0, xe = x; bool big = false;
+        const char *s = str;
+        for (; *s && *s != '
+'; s++) {
+            if (*s == '~') { xe += 2; continue; }
+            const uint8_t *g = glyph35(*s);
+            if (g) {
+                if (n < 40) {
+                    uint32_t p = 0;
+                    for (int r = 0; r < 6; r++) p |= (uint32_t)(((g[0] >> r) & 1) | (((g[1] >> r) & 1) << 1) | (((g[2] >> r) & 1) << 2)) << (3 * r);
+                    pk[n] = p; px[n] = (int16_t)xe; n++;
+                } else big = true;
+            }
+            xe += 4;
+        }
+        if (n && !big && px[0] >= k.x0 && px[n - 1] + 3 <= k.x1 && y >= k.y0 && y + 6 <= k.y1) {
+            const int g0 = px[0] >> 3, cnt = ((px[n - 1] + 2) >> 3) - g0 + 1;
+            uint32_t *const base = FB_WORDS + g0 * 160 + y;
+            for (int r = 0; r < 6; r++) {
+                uint32_t buf[26];
+                for (int j = 0; j < cnt; j++) buf[j] = 0;
+                for (int i = 0; i < n; i++) {
+                    const unsigned pat = (pk[i] >> (3 * r)) & 7;
+                    if (!pat) continue;
+                    const uint32_t m = T35M[pat]; const int p = px[i], gi = (p >> 3) - g0, sh = (p & 7) * 4;
+                    buf[gi] |= m << sh;
+                    if (sh > 20) buf[gi + 1] |= m >> (32 - sh);
+                }
+                for (int j = 0; j < cnt; j++) {
+                    const uint32_t m = buf[j];
+                    if (m) { uint32_t *w = base + j * 160 + r; *w = (*w & ~m) | (cc & m); }
+                }
+            }
+        } else if (n || big) {
+            int xx = x;
+            for (const char *t = str; t < s; t++) {
+                if (*t == '~') { xx += 2; continue; }
+                const uint8_t *g = glyph35(*t);
+                if (g) glyph(xx, y, g, 3, c);
+                xx += 4;
+            }
+        }
+        x = xe;
+        if (!*s) break;
+        str = s + 1; x = x0; y += 7;
+    }
+    return x - x0;
+}
+>>>>>>>

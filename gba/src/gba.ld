@@ -10,7 +10,7 @@ MEMORY {
 SECTIONS {
   .header : { KEEP(*(.header)) KEEP(*(.rodata.savetag)) *(.text.start) } > rom
   /* library RAMFUNCs this game seldom calls (never in the pc samples): left in ROM, IWRAM is full */
-  .romfuncs : { *(.iwram.text.sprite4 .iwram.text.spriterot .iwram.text.glyph16) } > rom
+  .romfuncs : { *(.iwram.text.sprite4 .iwram.text.spriterot .iwram.text.glyph16 .iwram.text.glyph) } > rom
   /* patches 12 and 13 put the cloud banks and the rain's particle loops in IWRAM; their room: variables the cartridge-run game code uses (particles, men, enemies, gore, booms, the height table, the HUD's line buffer) live in EWRAM (named below) */
   /* (first: the EWRAM variables, before .bss's wildcard below can take them) */
   .ewram (NOLOAD) : { _ewram_start = .; *(.bss._ZN4cardL3bufE) *(.bss._ZL9s_scratch) *(.bss.gba_*) *(.bss._ZN4saveL6mirrorE) *(.bss._ZN12_GLOBAL__N_17songBufE) *(.bss._ZL2pt .bss._ZZL1ThE3buf .bss._ZL6s_beam .bss._ZZL7drawHudvE4line .bss._ZL3hgt .bss._ZL4topA .bss._ZL5s_obj .bss._ZL5s_sky .bss._ZL6s_skyN .bss._ZL9s_skySetN .bss._ZL11s_skySetBuf .bss._ZL10s_skyStamp .bss._ZL8s_skyKey .bss._ZL3men .bss._ZL2en .bss._ZL2es .bss._ZL4gore .bss._ZL5booms) *(.ewram .ewram.*) . = ALIGN(4); _ewram_end = .; } > ewram   /* cleared by crt0.S (power-on EWRAM is not zero on hardware) */
