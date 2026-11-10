@@ -2957,19 +2957,26 @@ void loop() {
     card::frame();
     if (!card::ok()) { if ((frameNo % 60) == 2) card::open(); }
     else if (loadReq == 3) {                                      // (each part in a frame of its own, none drawn)
-      if (card::copy((uint8_t *)&PLR, CARD_PLANET + (uint32_t)(stage & 7) * PLANET_LEN, PLANET_LEN)
-        && card::copy((uint8_t *)&PK, CARD_PACK + (uint32_t)(stage & 15) * sizeof(Pack), sizeof(Pack))) {
-        loadReq = 2;
 #ifdef CHGBA
+      static bool cardGot;                                        // (the card's copy in one frame, genStage in the next)
+      if (cardGot) { cardGot = false; genStage(); if (state == TITLE) cam = 200; loadReq = 2; }
+      else if (card::copy((uint8_t *)&PLR, CARD_PLANET + (uint32_t)(stage & 7) * PLANET_LEN, PLANET_LEN)
+        && card::copy((uint8_t *)&PK, CARD_PACK + (uint32_t)(stage & 15) * sizeof(Pack), sizeof(Pack))) {
+        cardGot = true;
         {   // the card's colours are in the CHGame order, where 0 is C_INK and 2 C_SKY0: Game.h swaps those two here
             auto fix = [](uint8_t &c) { if (c == 0) c = C_INK; else if (c == 2) c = C_SKY0; };
             fix(PLR.crack); fix(PLR.shopc); fix(PLR.basec);                  // (clouds: 0 is none, and never 2)
             for (auto &a : PLR.alien) for (auto &c : a) fix(c);
         }
-#endif
+      }
+#else
+      if (card::copy((uint8_t *)&PLR, CARD_PLANET + (uint32_t)(stage & 7) * PLANET_LEN, PLANET_LEN)
+        && card::copy((uint8_t *)&PK, CARD_PACK + (uint32_t)(stage & 15) * sizeof(Pack), sizeof(Pack))) {
+        loadReq = 2;
         genStage();
         if (state == TITLE) cam = 200;
       }
+#endif
     } else if (loadReq) {
 #ifdef CHGBA
         static uint8_t topsPart;                                  // (the tile, then two layers' tops, then the other two: a frame each)
