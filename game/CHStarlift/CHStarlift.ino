@@ -385,16 +385,14 @@ static void buildTile() {
                 v = a == 0 || b == 0 ? 0 : a < 4 ? 3 : b < 4 ? 1 : 2;
                 break;
             }
-            default: {                                         // round stones: the nearest of nine jittered centres (wrapping)
+            default: {                                         // round stones: the nearest of six jittered centres (wrapping)
                 int best = 9999, second = 9999, bdx = 0, bdy = 0;
                 for (int k = 0; k < 6; k++) {
                     const uint32_t h = hash((uint32_t)k * 101u + planet);
                     const int cx = (k & 1) * 8 + (int)(h & 3), cy = (k >> 1) * 5 + (int)((h >> 3) & 3);
-                    for (int wx = -16; wx <= 16; wx += 16)
-                        for (int wy = -16; wy <= 16; wy += 16) {
-                            const int dx = x - cx - wx, dy = (y - cy - wy) * 2, d = dx * dx + dy * dy;
-                            if (d < best) { second = best; best = d; bdx = dx; bdy = dy; } else if (d < second) second = d;
-                        }
+                    // each centre's nearest wrapped copy only (-7..8 away): the same tile, on all eight worlds, as trying all nine copies, in a ninth of the time
+                    const int dx = ((x - cx + 7) & 15) - 7, dy = (((y - cy + 7) & 15) - 7) * 2, d = dx * dx + dy * dy;
+                    if (d < best) { second = best; best = d; bdx = dx; bdy = dy; } else if (d < second) second = d;
                 }
                 v = second - best < 9 ? 0 : (bdy < -1 && bdx < 2) ? 3 : bdy > 2 ? 1 : 2;
             }
