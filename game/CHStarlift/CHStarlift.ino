@@ -202,6 +202,8 @@ static uint8_t titleSel, pauseSel, helpPage, optSel, musicV = 4, fxV = 4;
 static uint8_t won, wpn;                                      // wpn: the laser power-up, 0 none, 1 spread, 2 fat, 3 rapid, 4 twin                                           // all eight worlds done
 struct Fetch { int16_t x; uint8_t kind, st; };               // a fetch quest's cargo: st 0 none, 1 on the ground, 2 on the rope, 3 aboard
 static Fetch fq;
+static Critter *fqC;                                          // the cargo on the rope / led in, riding a cow's slot (the cow's rope, landing and crew)
+static void fqCrit(int kind, int y);
 // each stage's hazards (0.46): a different mix from stage 3 on
 enum : uint8_t { HZ_LEAK = 1, HZ_SNIPER = 2, HZ_TUNNEL = 4, HZ_MAG = 8, HZ_VENTS = 16, HZ_METEORS = 32, HZ_EVAC = 64 };
 static const uint8_t HZ[8] = { 0, 0, HZ_TUNNEL, HZ_SNIPER | HZ_METEORS, HZ_VENTS | HZ_TUNNEL | HZ_MAG,
@@ -517,7 +519,7 @@ static void genStage() {
     wxLvl = 3;                                                     // a perf test: the worst weather
 #endif
     ticket = 0; tubeT = 0;
-    memset(crit, 0, sizeof crit);
+    memset(crit, 0, sizeof crit); fqC = 0;
 }
 
 // ---- effects ------------------------------------------------------------------------------------------------------
@@ -722,7 +724,7 @@ static void updateLander(bool l, bool r, bool thr, bool gearEdge, bool fire, boo
                 }
             if (onPad == 2) {                                        // the base pad: refuel, repair, let the colonists off
                 for (auto &it : items) if (it.st == 2) { it.st = 0; addScore(500 * (sector + 1), doorX, groundAt(doorX) - 20); say(MS_DELIVERED); sfx(S_SAVED); }
-                if (fq.st == 3) fqDone();
+                if (fq.st == 3) fqCrit(8, groundAt(LX()));                // the crate: the crew come out for it
                 leak = 0;                                            // the tank patched
                 if (foodOn) {
                     foodOn = 0; partyT = 180; feasts++; addScore(2000 * (sector + 1), doorX, groundAt(doorX) - 28); sfx(S_CLEAR);
@@ -998,14 +1000,14 @@ static void updateEnemies() {
     }
     bool idle = false;
     for (int i = 0; i < nMen; i++) if (men[i].st == M_IDLE) idle = true;
-    const int want = clampi((dE + stage) / 2, 1, 5 + dE);            // (one at a time on the first stage)
+    const int want = clampi((dE + stage) / 3, 1, 2 + dE);   // 0.48: calmer (was /2, cap 5+dE)            // (one at a time on the first stage)
     if (spawnT) spawnT--;
     else if (fliers < want) {
         const int side = rnd(2) ? 1 : -1;
         const int x = clampi(cam + SW / 2 + side * (150 + (SW - 128) / 2 + rnd(110)), 20, W - 20);
         uint8_t k = (idle && ufos < 1 + stage / 3 && rnd(10) < 6) ? E_UFO : (rnd(3) && stage ? E_STINGER : E_MINE);   // (no stingers on the first stage)
         if (Enemy *e = spawnEn(k, x, 28 + WDY + rnd(30))) { if (k == E_UFO) { sfx(S_UFO); } e->vx = (int8_t)(-side * 8); }
-        spawnT = clampi(300 - stage * 12, 90, 300) * (9 - 2 * dE) / 7;                  // enemies come spaced out: time for a rescue between them
+        spawnT = clampi(300 - stage * 8, 160, 300) * (9 - 2 * dE) / 7;                  // enemies come spaced out: time for a rescue between them
     }
     for (int ei = 0; ei < ENS; ei++) {
         Enemy &e = en[ei];
@@ -1687,6 +1689,7 @@ static void drawItems() {
 
 // ---- fetch quests (stage 3 on): a call-out with a picture, cargo with beacons, lifted or landed on, taken to base -----
 static const CSpr *const FETCH[6] = { &C_FETCH0, &C_FETCH1, &C_FETCH2, &C_FETCH3, &C_FETCH4, &C_FETCH5 };   // 0-2 lifted, 3-5 landed on
+static void fqCrit(int kind, int y) { Critter *c = &crit[CRITS - 1]; *c = { (int16_t)LX(), (int16_t)y, (int8_t)sgn(doorX - LX()), (uint8_t)kind, 0 }; fqC = c; fq.st = 2; }
 static void fqDone() {
     fq.st = 0; fqT = 240; fqPic = 0; hoverT = 0; tankT = 160; shield = shMax();             // a full tank (filled after the call-out) and a mended hull
     addScore(1500, doorX, groundAt(doorX) - 24); sfx(S_SAVED);
@@ -1727,10 +1730,9 @@ static void updateFetch() {
         return;
     }
     if (fq.st == 1) {
-        if (fq.kind < 3) { if (lst == 0 && hoverT < 255 && absi(fq.x - LX()) < 16 && groundAt(fq.x) - LY() < 56 && hoverTick()) { fq.st = 2; hoverT = 255; sfx(S_CATCH); } }
+        if (fq.kind < 3) { if (lst == 0 && hoverT < 255 && absi(fq.x - LX()) < 16 && groundAt(fq.x) - LY() < 56 && hoverTick()) { fqCrit(6, groundAt(fq.x)); hoverT = 255; sfx(S_CATCH); } }
         else if (lst == 1 && absi(fq.x - LX()) < 12) { fq.st = 3; sfxSay(S_CATCH, MS_SUPPLIES); }
-    } else if (lst == 2) { fq.st = 1; fq.x = (int16_t)LX(); hoverT = 0; say(MS_FQ_DROP, 60); }   // the lander lost: the cargo falls where it was
-    else if (fq.st == 2) { fq.x = (int16_t)LX(); if (absi(fq.x - basePadX - 20) < 24) fqDone(); }   // carried on the rope: set down at the base
+    }
 }
 static void drawVents() {
     for (int k = 0; k < 3; k++) {
@@ -1752,12 +1754,11 @@ static void drawFetch() {
         for (int j = 0; j < 10; j++) { const int y = gy - 8 - ((j * 13 + (k ? -1 : 1) * (int)frameNo * 3) & 63); pset(sx - 6 + (j * 7) % 13, y, C_WHITE); }   // the air streaming
     }
 #endif
-    if (fq.st != 1 && fq.st != 2) return;
+    if (fq.st != 1) return;
     const CSpr &sp = *FETCH[fq.kind];
-    const int sx = fq.x - cam, by = fq.st == 2 ? LY() + 28 : groundAt(fq.x), ty = by - sp.h;
+    const int sx = fq.x - cam, by = groundAt(fq.x), ty = by - sp.h;
     if (sx < -20 || sx > SW + 20) return;
-    if (fq.st == 2) R(sx, LY() + 8, 1, ty - LY() - 8, C_SILVER);                   // the rope
-    else if (fq.kind < 3 && hoverT && hoverT < 255 && absi(fq.x - LX()) < 16) hoverBar(sx, ty, C_GOLD);
+    if (fq.kind < 3 && hoverT && hoverT < 255 && absi(fq.x - LX()) < 16) hoverBar(sx, ty, C_GOLD);
     blitBC(sp, sx, by, false);
     const uint8_t c = (frameNo & 8) ? C_RED : C_WHITE, c2 = (frameNo & 8) ? C_WHITE : C_RED;   // beacons flashing in turn
     R(sx - sp.w / 2, ty - 2, 2, 2, c); R(sx + sp.w / 2 - 2, ty - 2, 2, 2, c2);
@@ -1938,15 +1939,16 @@ static void updateCritters() {
         if (c.kind >= 6) {                                              // a cow in its harness: 6 on the rope, 7 let down at the base, 8 led in by the crew
             const int d = sgn(doorX - c.x);
             if (c.kind == 6) {
-                if (lst == 2) { c.kind = 3; c.t = 0; hoverT = 0; continue; }  // the lander lost: down it drops
+                if (lst == 2) { c.kind = 3; c.t = 0; hoverT = 0; if (&c == fqC) { c.kind = 0; fqC = 0; fq.st = 1; fq.x = c.x; say(MS_FQ_DROP, 60); } continue; }  // the lander lost: down it drops
                 c.x = (int16_t)LX();
-                if ((c.t & 63) == 0) sfx(S_MOO);                             // mooing all the way
+                if ((c.t & 63) == 0 && &c != fqC) sfx(S_MOO);                             // mooing all the way
                 c.y = (int16_t)(c.y + clampi(LY() + 22 - c.y, -1, 4));       // winched up a little, then along under the lander
                 if (absi(c.x - basePadX - 20) < 24) c.kind = 7;               // over the base: let down
             } else if (c.kind == 7) { c.x = (int16_t)LX(); if ((c.t & 3) == 0) c.y++; }   // slowly down the rope, still under the lander
             else if (c.t / 2 >= absi(c.x - doorX) && patT) { if (--patT == 48) sfx(S_MOO); if ((patT & 15) == 8) sfx(S_FUEL); c.t--; }   // a pat on the head first
             else if (c.t / 2 >= absi(c.x - doorX) && (c.t & 1)) { c.x = (int16_t)(c.x + d); c.t--; }   // the crew come out, take the cow and lead it in
             if (c.y >= groundAt(c.x)) { c.y = (int16_t)groundAt(c.x); if (c.kind == 7) { c.kind = 8; c.t = 0; c.vx = (int8_t)d; patT = 96; ropeL = (uint8_t)clampi(c.y - LY() - 16, 0, 255); } }
+            if (!d && c.kind == 8 && &c == fqC) { c.kind = 0; fqC = 0; fqDone(); }   // the cargo in: the reward
             if (!d && c.kind == 8) { c.kind = 0; hoverT = 0; cowsN++; addScore(1000, doorX, c.y - 20); say(MS_COWS_HOME, 60); sfx(S_SAVED); tankT = 100; shield = shMax(); }   // home with the colonists: steaks up, and the lander topped up
             continue;
         }
@@ -2000,6 +2002,7 @@ static void drawCritters() {
             }   // the crew
             if (c.kind == 5) { const Enemy &e = en[c.vx]; drawBeam((e.x >> 4) - cam, e.y >> 4, c.y + 1); }   // beamed up, legs kicking
             const bool fall = c.kind != 4 && c.kind != 8, eat = c.kind == 4 && (c.t & 127) >= 40;
+            if (&c == fqC) { blitBC(*FETCH[fq.kind], c.x - cam, c.y, false); continue; }   // (the fetch cargo in a cow's place)
             blitBC(fall ? (((c.t >> 2) & 1) ? C_COWUP : C_COW) : eat ? C_COWEAT : C_COW, c.x - cam, c.y, fall ? ((c.t >> 3) & 1) : c.vx < 0);
             continue;
         }
