@@ -1715,7 +1715,7 @@ static void updateFetch() {
         if (fqN && fqT && !--fqT) {
             fqN--;
             const int k = stage + fqN;
-            fq = { fqX[fqN], (uint8_t)((k & 1 ? 0 : 3) + (k >> 1) % 3), 1 };
+            fq = { fqX[fqN], (uint8_t)((k % 3 ? 0 : 3) + (k >> 1) % 3), 1 };
             sfxSay(S_WARN, (uint8_t)(MS_FQ0 + fq.kind), 120);
         }
         return;
