@@ -1,0 +1,83 @@
+# 21-lod: level of detail. gbaLod is 0 normally, 1 after a play frame that took over ~27 ms, 2 over ~33 ms (it falls back
+# a few frames after the last busy one, so nothing flickers). Only cosmetic drawing is reduced: half the weather
+# particles, no cloud banks / far giant / neon billboard text; at 2 also no plants. State, collision, enemies, shots,
+# the lander and the HUD are never touched (the particles are still moved, the plants are only not drawn).
+
+@@ sketch.cpp
+<<<<<<<
+static int lastCam;
+=======
+static uint8_t gbaLod, gbaLodHold;                               // GBA: patch 21-lod
+static void gbaLodUpdate(uint32_t us) {
+    const uint8_t want = us > 27000 ? 2 : us > 22000 ? 1 : 0;
+    if (want >= gbaLod && want) { gbaLod = want; gbaLodHold = 8; }
+    else if (gbaLodHold) gbaLodHold--;
+    else gbaLod = want;
+}
+static int lastCam;
+>>>>>>>
+
+@@ sketch.cpp
+<<<<<<<
+    const int nWx = WXN * wxLvl / 3;
+#ifdef SL_TRACE
+=======
+    const int nWx = (WXN * wxLvl / 3) >> (gbaLod ? 1 : 0);      // GBA: patch 21-lod (half the particles when busy)
+#ifdef SL_TRACE
+>>>>>>>
+
+@@ sketch.cpp
+<<<<<<<
+    if (p.clouds) {                                             // dithered cloud banks drifting slowly
+=======
+    if (p.clouds && !gbaLod) {                                  // dithered cloud banks drifting slowly (GBA: patch 21-lod)
+>>>>>>>
+
+@@ sketch.cpp
+<<<<<<<
+        if ((stage & 7) != 1 || ((frameNo >> 8) & 1)) blit(g, gx, gy, false, 255, mp);   // the far worm only shows now and then
+=======
+        if (!gbaLod && ((stage & 7) != 1 || ((frameNo >> 8) & 1))) blit(g, gx, gy, false, 255, mp);   // the far worm only shows now and then (GBA: patch 21-lod)
+>>>>>>>
+
+@@ sketch.cpp
+<<<<<<<
+    if (on && (hash((uint32_t)(frameNo >> 1) + h) & 63) != 0) text35(x + 3, y + 3, t, (ph & 32) ? C_ACC : (h & 8) ? C_GOLD : C_WHITE);   // neon, flickering now and then
+=======
+    if (on && !gbaLod && (hash((uint32_t)(frameNo >> 1) + h) & 63) != 0) text35(x + 3, y + 3, t, (ph & 32) ? C_ACC : (h & 8) ? C_GOLD : C_WHITE);   // neon, flickering now and then
+>>>>>>>
+
+@@ sketch.cpp
+<<<<<<<
+static void drawPlants() {
+=======
+static void drawPlants() {
+    if (gbaLod > 1) return;                                     // GBA: patch 21-lod
+>>>>>>>
+
+@@ sketch.cpp
+<<<<<<<
+    dbg::markRenderStart();
+    update();
+=======
+    const uint32_t lodT0 = micros();                            // GBA: patch 21-lod
+    dbg::markRenderStart();
+    update();
+>>>>>>>
+
+@@ sketch.cpp
+<<<<<<<
+    dbg::markRenderEnd();
+#ifdef CHGBA
+=======
+    dbg::markRenderEnd();
+    if (state == PLAY && !loadReq && !gba_warmUp) gbaLodUpdate(micros() - lodT0); else gbaLod = 0;   // GBA: patch 21-lod
+#ifdef CHGBA
+>>>>>>>
+
+@@ sketch.cpp
+<<<<<<<
+static void drawStructures(int L) { hbgClipFor(L == 0 ? 1 : L == 1 ? 2 : -1); structures_(L); hbgClipFor(-1); }   // GBA: patch 04
+=======
+static void drawStructures(int L) { if (gbaLod > 1 && L > 0) return; hbgClipFor(L == 0 ? 1 : L == 1 ? 2 : -1); structures_(L); hbgClipFor(-1); }   // GBA: patch 04 (patch 21-lod: the mid and near layers' buildings are left out when very busy)
+>>>>>>>
