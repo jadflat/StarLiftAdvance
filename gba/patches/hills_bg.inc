@@ -86,12 +86,19 @@ __attribute__((noinline)) static void hbgColumn(int L, int X) {
 static uint8_t hbgClipA[3][SW];              // per column: the rows things behind layers 0, 1, 2 stop at (hbgPrep)
 
 // the far and mid layers for this frame: new tile columns, the scroll
+extern "C" { extern uint8_t gba_warm, gba_over, gba_bcSkip; extern uint32_t gba_bcSpent; }
 __attribute__((noinline)) static void hbgDraw() {
     if (hbgStageNew) { hbgStageNew = false; hbgReset(); }
     for (int L = 0; L < 2; L++) {
         const int lc = cam >> (3 - L);
-        for (int X = lc >> 3, X1 = (lc + SW - 1) >> 3; X <= X1; X++) if (hbgCol[L][X & 31] != X) hbgColumn(L, X);
+        for (int X = lc >> 3, X1 = (lc + SW - 1) >> 3; X <= X1; X++) if (hbgCol[L][X & 31] != X) {
+            if (gba_warm && gba_bcSpent > 4000) { gba_over = 1; goto done; }         // (patch 20: ~4 ms of new work a frame while warming up)
+            const uint32_t t0 = micros();
+            hbgColumn(L, X);
+            if (gba_warm) gba_bcSpent += micros() - t0;
+        }
     }
+done:
     gba_hillScroll(cam >> 3, cam >> 2);
 }
 

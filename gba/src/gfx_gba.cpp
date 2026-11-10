@@ -53,6 +53,7 @@ static uint8_t s_mode = GFX_16BPP, s_div = GFX_DIV2;
 static uint8_t s_scratch[2 * GFX_CHUNK_BYTES] __attribute__((aligned(4)));
 
 volatile uint8_t gba_flipPending;
+extern "C" { uint8_t gba_warm, gba_over, gba_bcSkip; uint32_t gba_bcSpent; }   // patch 20-warmup: the load budgets
 static uint8_t s_back = 1;                  // the page the next frame is drawn into (the other one is on show)
 static uint8_t s_shown = 0;
 static uint16_t s_pal[16];                  // BGR555, loaded at the flip

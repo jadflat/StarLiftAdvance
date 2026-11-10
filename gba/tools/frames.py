@@ -83,7 +83,7 @@ callbacks:add("frame", function()
     if k > 2 and k <= {frames} then
       tot = tot + 1
       if b > worst then worst = b; worstAt = k end
-      if b > 33333 then over = over + 1; overList = overList .. " " .. k .. ":" .. math.floor(b / 100) / 10 end
+      if b > {os.environ.get("FR_THRESH","33333")} then over = over + 1; overList = overList .. " " .. k .. ":" .. math.floor(b / 100) / 10 end
       local h = math.floor(b / 2000); hist[h] = (hist[h] or 0) + 1
       cs = cs + p; cb = cb + b; cn = cn + 1; if b > cm then cm = b end
       if k % 250 == 0 then

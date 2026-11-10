@@ -98,7 +98,12 @@ SLG_IWRAM static void gbgClearStrip(uint32_t *p, int y, int yz) {
 
 __attribute__((noinline)) static void bgGroundDraw() {
     if (slgStageNew) { slgStageNew = false; gbgReset(); }                     // (set by buildTile, patch 01)
-    for (int X = cam >> 3, X1 = (cam + SW - 1) >> 3; X <= X1; X++) if (gbgCol[X & 31] != X) gbgColumn(X);
+    for (int X = cam >> 3, X1 = (cam + SW - 1) >> 3; X <= X1; X++) if (gbgCol[X & 31] != X) {
+        if (gba_warm && gba_bcSpent > 4000) { gba_over = 1; break; }             // (patch 20: ~4 ms of new work a frame while warming up)
+        const uint32_t t0 = micros();
+        gbgColumn(X);
+        if (gba_warm) gba_bcSpent += micros() - t0;
+    }
     gba_groundScroll(cam);
 #ifdef GBA_GROUNDCHECK
     void gbgCheck(); gbgCheck();

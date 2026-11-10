@@ -1,0 +1,54 @@
+# 20-warmup: a screen's first drawn frame (new stage: the hills, the ground, the sprites' decoded pictures) spread over
+# frames drawn with the screen black and not shown. gba_warm: the budgets are on (hbgDraw and the ground loop: 6 new
+# columns a call; bcMake: ~10 ms a frame, over it the sprite is skipped); gba_over: one of them ran out, so draw again.
+
+@@ sketch.cpp
+<<<<<<<
+        static uint8_t lastState = 255, fadeT;
+        if (state != lastState) { if (state == TITLE || state == INTRO || state == OVER) fadeT = 8; lastState = (uint8_t)state; }
+        if (fadeT) { fadeT--; gba_hwFade((uint8_t)(fadeT * 30), 0x0000); }
+=======
+        static uint8_t lastState = 255, fadeT;
+        if (state != lastState) { if (state == TITLE || state == INTRO || state == OVER) { fadeT = 8; gba_warmUp = true; } lastState = (uint8_t)state; }
+        if (gba_warmUp) {
+            gba_hwFade(255, 0x0000);
+            if (hbgStageNew || slgStageNew) {                              // the hills' and the ground's caches: a frame of their own
+                if (hbgStageNew) { hbgStageNew = false; hbgReset(); }
+                if (slgStageNew) { slgStageNew = false; gbgReset(); }
+                return;
+            }
+            gba_warm = 1; gba_over = 0; gba_bcSpent = 0;
+        }
+        else if (fadeT) { fadeT--; gba_hwFade((uint8_t)(fadeT * 30), 0x0000); }
+>>>>>>>
+
+@@ sketch.cpp
+<<<<<<<
+    case OPTIONS: drawOptions(); break;
+    default: drawWorld(); break;
+    }
+}
+=======
+    case OPTIONS: drawOptions(); break;
+    default: drawWorld(); break;
+    }
+    if (gba_warm) { gba_bcFinish(); gba_warm = 0; if (!gba_over) gba_warmUp = false; }  // (all of it drawn: this frame is shown, then the fade in)
+}
+>>>>>>>
+
+@@ sketch.cpp
+<<<<<<<
+    if (loadReq && card::ok()) gba_holdFrame(); else               // a stage is loading: nothing new to show
+=======
+    if ((loadReq && card::ok()) || gba_warmUp) gba_holdFrame(); else   // a stage is loading or warming up: nothing new to show
+>>>>>>>
+
+@@ sketch.cpp
+<<<<<<<
+static void draw() {
+=======
+extern "C" { extern uint8_t gba_warm, gba_over, gba_bcSkip; extern uint32_t gba_bcSpent; }
+void gba_bcFinish();
+bool gba_warmUp;                                            // patch 20-warmup: a screen's first frames, drawn black and not shown
+static void draw() {
+>>>>>>>

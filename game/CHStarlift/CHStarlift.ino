@@ -2971,8 +2971,18 @@ void loop() {
         if (state == TITLE) cam = 200;
       }
     } else if (loadReq) {
+#ifdef CHGBA
+        static uint8_t topsPart;                                  // (the tile, then two layers' tops, then the other two: a frame each)
+        if (loadReq == 2) {
+            if (topsPart == 0) buildTile();
+            else if (topsPart == 1) { layerTops(0); layerTops(1); }
+            else { layerTops(2); layerTops(3); loadReq = 1; }
+            topsPart = loadReq == 1 ? 0 : topsPart + 1;
+        } else { loadReq = 0; applyPalette(); }
+#else
         if (--loadReq) { buildTile(); for (int L = 0; L < 4; L++) layerTops(L); }   // (the tops now, not in the first frame drawn)
         else applyPalette();
+#endif
     } else {                                                      // the next song, from the card
         const int id = synth::wanted();
         if (id >= 0 && card::copy(synth::buffer(), CARD_SONG + SONG_OFF[id], SONG_LEN[id])) synth::loaded();
