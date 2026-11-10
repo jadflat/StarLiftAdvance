@@ -1,4 +1,4 @@
-# 16-weather-iwram: snow's particle loops in IWRAM ARM code, like patch 13 did for
+# 16-weather-iwram: snow's and ash's particle moves in IWRAM ARM code, like patch 13 did for the rain class (room: topA to
 # EWRAM in gba.ld). The game's case, the same moves in the same order (the sway's isin worked out once, not twice: the
 # same value); hash and isin as inline copies. Snow (planet 2, the aurora world) was 8% of a frame.
 
@@ -29,6 +29,21 @@ __attribute__((section(".iwram.text"), noinline, target("arm"), minsize)) static
     }
 }
 
+// updateWeather's loop for ash (the game's case): (frameNo + i) % 3 counted along, not divided
+__attribute__((section(".iwram.text"), noinline, target("arm"), minsize)) static void wxMoveAsh(int dc, int nWx) {
+    const int fn = frameNo;
+    int m = (int)((unsigned)fn % 3u);
+#pragma clang loop unroll(disable)
+    for (int i = 0; i < nWx; i++, m = m == 2 ? 0 : m + 1) {
+        int x = wxX[i] - dc, y = wxY[i];
+        if (i & 1) { y -= 1; x += m == 0; } else { y += (fn & 1); }
+        while (x < 0) x += WXR;
+        while (x >= WXR) x -= WXR;
+        if (y >= SH) { y = TOP; x = rnd(WXR); }
+        if (y < TOP) { y = SH - 1; x = rnd(WXR); }
+        wxX[i] = (uint8_t)x; wxY[i] = (uint8_t)y;
+    }
+}
 static void updateWeather() {
     const Planet &p = PLR;
     const int dc = cam - lastCam;
@@ -41,5 +56,6 @@ static void updateWeather() {
 =======
     if (p.weather == WX_RAIN || p.weather == WX_DRIZZLE || p.weather == WX_ACID) wxMoveRain(dc, nWx, FALL[p.weather - WX_RAIN][0], p.weather == WX_RAIN);   // GBA: patch 13-weather-fast
     else if (p.weather == WX_SNOW) wxMoveSnow(dc, nWx);   // GBA: patch 16-weather-iwram
+    else if (p.weather == WX_ASH) wxMoveAsh(dc, nWx);
     else
 >>>>>>>
