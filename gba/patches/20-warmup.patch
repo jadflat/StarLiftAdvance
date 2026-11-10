@@ -19,7 +19,7 @@
             }
             gba_warm = 1; gba_over = 0; gba_bcSpent = 0;
         }
-        else if (fadeT) { fadeT--; gba_hwFade((uint8_t)(fadeT * 30), 0x0000); }
+        else { gba_bcSpent = 0; if (fadeT) { fadeT--; gba_hwFade((uint8_t)(fadeT * 30), 0x0000); } }
 >>>>>>>
 
 @@ sketch.cpp
@@ -32,7 +32,8 @@
     case OPTIONS: drawOptions(); break;
     default: drawWorld(); break;
     }
-    if (gba_warm) { gba_bcFinish(); gba_warm = 0; if (!gba_over) gba_warmUp = false; }  // (all of it drawn: this frame is shown, then the fade in)
+    gba_bcFinish();
+    if (gba_warm) { gba_warm = 0; if (!gba_over) gba_warmUp = false; }  // (all of it drawn: this frame is shown, then the fade in)
 }
 >>>>>>>
 

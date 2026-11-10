@@ -48,14 +48,14 @@ uint32_t gba_bcResets;                                                          
 extern "C" { extern uint8_t gba_warm, gba_over, gba_bcSkip; extern uint32_t gba_bcSpent; }
 // a picture's rows decoded into its entry, from row r on; false: stopped at the deadline (us) before the last row (patch 20: a big
 // picture is spread over the frames drawn black while a screen starts; only then is there a deadline)
-static struct BcPend { BcEnt *e; const uint8_t *p; int r; } gba_bcPend __attribute__((section(".ewram")));
+static struct BcPend { BcEnt *e; const uint8_t *p; int r; uint32_t bucket; } gba_bcPend __attribute__((section(".ewram")));
 static bool bcFill(BcEnt &e, const uint8_t *&p, int &r, uint32_t deadline) {
     const int w = e.w, h = e.h, nw = e.nw;
     const bool flip = e.flip;
     const uint8_t *lut = (const uint8_t *)e.lut;
     uint32_t *d = e.data + (uint32_t)r * 2 * nw;
     for (; r < h; r++, d += 2 * nw) {                                            // a row: nw words of colour, nw of mask
-        if (gba_warm && (int32_t)(micros() - deadline) > 0) return false;
+        if ((int32_t)(micros() - deadline) > 0) return false;
         for (int c = 0; c < w;) {
             const uint8_t b = *p++;
             const int n = (b >> 4) + 1, v = b & 15;
@@ -71,35 +71,36 @@ static bool bcFill(BcEnt &e, const uint8_t *&p, int &r, uint32_t deadline) {
     }
     return true;
 }
-void gba_bcFinish() {                                                            // (patch 20) the end of a frame drawn while warming up
+static inline void bcLink(BcEnt &e, uint32_t bucket) { e.next = gba_bcHead[bucket]; gba_bcHead[bucket] = (uint16_t)++gba_bcN; }
+void gba_bcFinish() {                                                            // (patch 20) the end of every frame drawn
     if (!gba_bcPend.e) return;
-    const uint32_t t0 = micros();
-    if (gba_bcSpent < 4000 && bcFill(*gba_bcPend.e, gba_bcPend.p, gba_bcPend.r, t0 + 4000 - gba_bcSpent)) gba_bcPend.e = nullptr;
+    const uint32_t lim = gba_warm ? 4000u : 1500u, t0 = micros();
+    if (gba_bcSpent < lim && bcFill(*gba_bcPend.e, gba_bcPend.p, gba_bcPend.r, t0 + lim - gba_bcSpent)) { bcLink(*gba_bcPend.e, gba_bcPend.bucket); gba_bcPend.e = nullptr; }
     else gba_over = 1;
     gba_bcSpent += micros() - t0;
 }
 __attribute__((noinline)) static BcEnt *bcMake(const uint8_t *p, uint32_t src, const uint32_t *lut4, int w, int h, bool flip, uint32_t bucket) {
     gba_bcSkip = 0;
-    if (gba_warm) {
-        if (gba_bcSpent > 4000 || gba_bcPend.e) { gba_over = 1; gba_bcSkip = 1; return nullptr; }  // (patch 20: ~4 ms a frame while warming up; over it the sprite is left out)
-    }
+    const uint32_t lim = gba_warm ? 4000u : 1500u;
+    if (gba_bcSpent > lim || gba_bcPend.e) { gba_over = 1; gba_bcSkip = 1; return nullptr; }  // (patch 20: ~1.5 ms of decoding a frame in play, 4 ms while warming up; over it the sprite is left out, a big one is finished over the next frames)
     const uint32_t t0 = micros();
     const int nw = (w + 7) >> 3;
     const uint32_t need = 2u * (uint32_t)nw * (uint32_t)h;
     if (need > BC_POOL) return nullptr;
     if (gba_bcUsed + need > BC_POOL || gba_bcN == BC_ENTS) {
-        memset(gba_bcHead, 0, sizeof gba_bcHead); gba_bcUsed = gba_bcN = 0; gba_bcResets++; gba_bcPend.e = nullptr;
+        memset(gba_bcHead, 0, sizeof gba_bcHead); gba_bcUsed = gba_bcN = 0; gba_bcResets++;
     }
     BcEnt &e = gba_bcEnt[gba_bcN];
     e.src = src; for (int k = 0; k < 4; k++) e.lut[k] = lut4[k];
     e.w = (uint16_t)w; e.h = (uint16_t)h; e.flip = flip; e.nw = (uint8_t)nw; e.data = gba_bcPool + gba_bcUsed;
     gba_bcUsed += need;
-    e.next = gba_bcHead[bucket]; gba_bcHead[bucket] = (uint16_t)++gba_bcN;
     memset(e.data, 0, need * 4);
     int r = 0;
-    if (!bcFill(e, p, r, t0 + 4000 - gba_bcSpent)) { gba_bcPend.e = &e; gba_bcPend.p = p; gba_bcPend.r = r; gba_over = 1; }
-    if (gba_warm) gba_bcSpent += micros() - t0;
-    return &e;
+    const bool done = bcFill(e, p, r, t0 + (lim > gba_bcSpent ? lim - gba_bcSpent : 0));
+    gba_bcSpent += micros() - t0;
+    if (done) { bcLink(e, bucket); return &e; }
+    gba_bcPend.e = &e; gba_bcPend.p = p; gba_bcPend.r = r; gba_bcPend.bucket = bucket; gba_over = 1; gba_bcSkip = 1;
+    return nullptr;                                                              // (not in the pool's lists until all its rows are decoded)
 }
 
 // the pool's entry for rd's picture in these colours and flip (decoding it first if new); null: not possible (no card data)
