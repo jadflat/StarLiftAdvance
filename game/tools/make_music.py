@@ -128,8 +128,12 @@ def add(name, bpm, sweep, inst, lead, bass, delay, dr, shift=12):
 
 
 # Instruments: (ratio, idx0, idxDecay, idxFloor, amp, volDecay, volFloor, drive, vib, glide, release)
-THEREMIN = (1, 12, 1, 5, 88, 0, 80, 16, 12, 5, 3)          # near-sine, a deep waver, a slow glide
-THEREMIN_HI = (1, 8, 1, 4, 70, 0, 62, 16, 14, 4, 3)
+THEREMIN = (1, 12, 1, 5, 64, 0, 58, 16, 12, 5, 3)          # near-sine, a deep waver, a slow glide
+BRASS = (1, 40, 2, 14, 66, 1, 46, 18, 3, 1, 6)            # 0.46: a punchy synth horn (Invasion)
+FLUTE = (1, 7, 1, 3, 66, 0, 56, 16, 5, 2, 4)               # soft and breathy, a gentle waver (Cosmos)
+ORGAN = (2, 24, 0, 24, 58, 0, 54, 20, 4, 0, 3)             # a steady, slightly gritty tone (Showdown)
+THEREMIN_SANDS = THEREMIN                                  # Sabulon keeps the theremin
+THEREMIN_HI = (1, 8, 1, 4, 52, 0, 46, 16, 14, 4, 3)
 VIBES = (4, 80, 5, 0, 74, 3, 0, 16, 2, 0, 10)               # a bright strike that fades to a pure tone
 BELL = (3, 96, 2, 12, 64, 1, 18, 16, 0, 0, 5)
 BELL_ECHO = (3, 70, 2, 10, 42, 1, 12, 16, 0, 0, 5)
@@ -164,7 +168,7 @@ P = {'A': [0, H, 1, H, 4, H, H, H, 5, H, 4, H, 1, H, 0, H],
      'D': [8, H, 7, H, 5, H, 4, H, 1, H, H, H, 0, H, H, H]}
 order = list('AABA' + 'AABC' + 'BBCD' + 'AACD')
 sh = [0, 0, 0, 0, 5, 5, 0, 0]
-add('SANDS', 100, 12, [THEREMIN, PLUCK_BASS, BELL_ECHO], lead_stream(64, 'doubleharm', P, order, sh),
+add('SANDS', 100, 12, [THEREMIN_SANDS, PLUCK_BASS, BELL_ECHO], lead_stream(64, 'doubleharm', P, order, sh),
     bass_stream(64, 'dub', sh), 3, drums('down'), shift=12)
 
 # ---- 3 bases: OUTPOST. A sequencer line echoed a fifth up, a pulsing bass, four on the floor
@@ -192,7 +196,7 @@ P = {'A': [0, H, H, H, 1, H, H, H, 4, H, H, H, 3, H, 1, H],
      'D': [8, H, 7, H, 8, H, 9, H, 7, H, H, H, 4, H, H, H]}
 order = list('AABA' + 'AABC' + 'DDCB' + 'AACB')
 sh = [0, 0, 0, 0, 1, 1, 0, 6]
-add('INVASION', 112, 16, [THEREMIN, PLUCK_BASS, VIBES], lead_stream(71, 'phrygian', P, order, sh),
+add('INVASION', 112, 16, [BRASS, PLUCK_BASS, VIBES], lead_stream(71, 'phrygian', P, order, sh),
     bass_stream(59, 'march', sh), 2, drums('march'), shift=6)
 
 # ---- 6 titan: COSMOS. Wide bells and the theremin, a slow pulse
@@ -201,7 +205,7 @@ P = {'A': [7, H, H, H, H, H, 6, H, 4, H, H, H, H, H, N, N],
      'C': [11, H, H, H, 9, H, 7, H, 6, H, 7, H, 9, H, H, H]}
 order = list('ABAC' + 'ABAC' + 'BCBC' + 'ABAC')
 sh = [0, 0, -2, -2, 5, 5, 0, 0]
-add('COSMOS', 88, 10, [THEREMIN, SOFT_BASS, BELL_ECHO], lead_stream(57, 'mixolydian', P, order, sh),
+add('COSMOS', 88, 10, [FLUTE, SOFT_BASS, BELL_ECHO], lead_stream(57, 'mixolydian', P, order, sh),
     bass_stream(57, 'pulse', sh), 4, drums('soft'), shift=19)
 
 
@@ -242,7 +246,7 @@ P = {'A': [0, H, 1, H, 0, H, N, 3, H, 1, H, 0, H, H, N, N],
      'D': [8, H, 7, H, 8, H, 9, H, 7, H, H, H, H, H, N, N]}
 order = list('AABA' + 'AABC' + 'CDCD' + 'AABD')
 sh = [0, 0, 0, 0, 1, 1, 0, 0]
-add('SHOWDOWN', 132, 20, [THEREMIN, PLUCK_BASS, SEQ_ECHO], lead_stream(64, 'phrygian', P, order, sh),
+add('SHOWDOWN', 132, 20, [ORGAN, PLUCK_BASS, SEQ_ECHO], lead_stream(64, 'phrygian', P, order, sh),
     bass_stream(52, 'eighths', sh), 3, drums('four'), shift=7)
 
 # 0 the title; 1..8 the planets in order (Moon, Ares, Cryo, Verda, Vulcan, Titan, Prism, Zorg); 9 the bosses
