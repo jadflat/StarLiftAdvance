@@ -24,4 +24,4 @@ for ln in open(sys.argv[1]):
     elif ln[0] != "end":
         cur.append(int(ln[0], 16))
 print(n, "over frames; samples (ms) in them:")
-for k, v in tot.most_common(25): print(f"  {v:5d} {k}")
+for k, v in tot.most_common(30): print(f"  {v:5d} {'IW ' if sy[k][0] >> 24 == 3 else 'ROM'} {sy[k][1]:5d} B {k}")

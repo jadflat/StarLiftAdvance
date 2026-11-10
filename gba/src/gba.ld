@@ -25,7 +25,7 @@ SECTIONS {
     *CHGfx_draw.o(.text._Z9gfx_hlineiiih .text._Z12gfx_fillRectiiiih .text._Z9gfx_vlineiiih .text._Z9gfx_pixeliih)
     *(.text._ZL4hashj .text._ZL6blitBCRK4CSpriibhPKh .text._ZL8groundAti .text._ZL4psetiih)
     *(.text._ZL2vnjiib .text._ZL9layerTopsi .text._ZL6clampiiii)   /* the scenery's column tops: every column when the camera jumps */
-    *(.text._ZL11updateShotsv .text._ZL4flagiih .text._ZL10drawPlantsv .text._ZL12bgGroundDrawv .text._ZL4blitRK4CSpriibhPKh)   /* hot game code (pc samples, FS 0.5) */
+    *(.text._ZL11drawWeatherv .text._ZL6bcFillR5BcEntRPKhRij .text._ZL5remapPhj .text._Z11text35WidthPKc .text._ZL4flagiih .text._ZL10drawPlantsv .text._ZL12bgGroundDrawv .text._ZL4blitRK4CSpriibhPKh)   /* hot game code (pc samples, FS 0.5) */
     *(.data .data.*)
     . = ALIGN(4); _iwram_end = .;
   } > iwram AT> rom
