@@ -42,7 +42,9 @@ void gfx__paletteTouch(void);
 #define GBA_FILL_SMOOTH 1                   // GBA_SCALE 240: 0 shows BG2 alone (a plain nearest-neighbour stretch, to compare)
 #endif
 
-#if GBA_NATIVE
+#if defined(GBA_VRAMFB)
+__asm__(".global gfx_fb\n.set gfx_fb, 0x06008000");   // EXPERIMENT: timing only
+#elif GBA_NATIVE
 uint8_t gfx_fb[GFX_FB_BYTES] __attribute__((aligned(4), section(".ewram")));   // (IWRAM has no room for 19 KB)
 #else
 uint8_t gfx_fb[GFX_FB_BYTES] __attribute__((aligned(4)));
@@ -341,7 +343,9 @@ extern "C" { volatile uint32_t gba_cvChecks, gba_cvBad, gba_cvBadFirst; }   // f
 #endif
 static void convert() {
     volatile uint32_t *const set = (volatile uint32_t *)(0x06000000 + s_back * 0x8000);
+#ifndef GBA_VRAMFB
     convertTo((const uint32_t *)gfx_fb, set);
+#endif
 #ifdef GBA_CONVCHECK
     const uint32_t *src = (const uint32_t *)gfx_fb;
     for (int y = 0; y < 160; y++)
