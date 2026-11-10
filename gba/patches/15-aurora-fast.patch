@@ -1,0 +1,34 @@
+# 15-aurora-fast: the aurora's curtain rows (drawSkyObjects, SK_AURORA, the on-screen path) in IWRAM ARM code. The game's
+# loop ran from the cartridge (4-5 cycles an instruction), 60 four-column curtains of ~15 rows a frame. Same bytes written
+# in the same order; the column sums (isin) stay in the game's loop.
+
+@@ sketch.cpp
+<<<<<<<
+            const uint8_t g2 = (uint8_t)(C_GREEN << 4 | C_GREEN);
+            b[0] = b[1] = g2; b += GFX_FB_STRIDE; b[0] = b[1] = g2; b += GFX_FB_STRIDE; b[0] = b[1] = g2; b += GFX_FB_STRIDE;
+            for (int y = top + 3; y < top + len; y++, b += GFX_FB_STRIDE) {
+                const uint8_t c = y - top < 4 ? C_GREEN : C_ACC;
+                if ((y + (frameNo >> 1)) & 1) { b[0] = (uint8_t)((b[0] & 0x0F) | c << 4); b[1] = (uint8_t)((b[1] & 0x0F) | c << 4); }
+                else { b[0] = (uint8_t)((b[0] & 0xF0) | c); b[1] = (uint8_t)((b[1] & 0xF0) | c); }
+            }
+=======
+            auroraCurtain(b, len, top + 3 + (frameNo >> 1));    // GBA: patch 15-aurora-fast
+>>>>>>>
+
+@@ sketch.cpp
+<<<<<<<
+static void skyObjects_() {           // GBA: drawSkyObjects() is in hills_bg.inc (patch 04-hills-bg), clipped
+=======
+// one aurora curtain, four columns (two bytes) wide: three rows of green, then a checker (green on row 3, then the accent)
+__attribute__((section(".iwram.text"), noinline, target("arm"))) static void auroraCurtain(uint8_t *b, int len, int ph) {
+    const uint8_t g2 = (uint8_t)(C_GREEN << 4 | C_GREEN);
+    b[0] = b[1] = g2; b += GFX_FB_STRIDE; b[0] = b[1] = g2; b += GFX_FB_STRIDE; b[0] = b[1] = g2; b += GFX_FB_STRIDE;
+#pragma clang loop unroll(disable)
+    for (int i = 3; i < len; i++, ph++, b += GFX_FB_STRIDE) {
+        const uint32_t c = i < 4 ? C_GREEN : C_ACC;
+        if (ph & 1) { b[0] = (uint8_t)((b[0] & 0x0F) | c << 4); b[1] = (uint8_t)((b[1] & 0x0F) | c << 4); }
+        else { b[0] = (uint8_t)((b[0] & 0xF0) | c); b[1] = (uint8_t)((b[1] & 0xF0) | c); }
+    }
+}
+static void skyObjects_() {           // GBA: drawSkyObjects() is in hills_bg.inc (patch 04-hills-bg), clipped
+>>>>>>>
