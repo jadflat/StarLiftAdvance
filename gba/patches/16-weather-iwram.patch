@@ -1,0 +1,45 @@
+# 16-weather-iwram: snow's particle loops in IWRAM ARM code, like patch 13 did for
+# EWRAM in gba.ld). The game's case, the same moves in the same order (the sway's isin worked out once, not twice: the
+# same value); hash and isin as inline copies. Snow (planet 2, the aurora world) was 8% of a frame.
+
+@@ sketch.cpp
+<<<<<<<
+static void updateWeather() {
+    const Planet &p = PLR;
+    const int dc = cam - lastCam;
+=======
+static inline __attribute__((always_inline)) uint32_t wxHash(uint32_t x) { x ^= x >> 16; x *= 0x7feb352dU; x ^= x >> 15; x *= 0x846ca68bU; x ^= x >> 16; return x; }
+static inline __attribute__((always_inline)) int wxSin(int a) { a &= 255; int b = a & 127, v = (b * (128 - b)) >> 5; return a < 128 ? v : -v; }
+// updateWeather's loop for snow (the game's case): flakes ride the wind, small ones blown hard, big ones lag
+__attribute__((section(".iwram.text"), noinline, target("arm"), minsize)) static void wxMoveSnow(int dc, int nWx) {
+    const int wv = windV, fn = frameNo;
+    const bool still = absi(wv) < 50, hold = absi(wv) >= 110;
+#pragma clang loop unroll(disable)
+    for (int i = 0; i < nWx; i++) {
+        int x = wxX[i] - dc, y = wxY[i];
+        const bool big = (i & 3) == 0;
+        x += (wv * (big ? 2 : 3 + (i & 3)) + (int)(wxHash((uint32_t)(fn * 64 + i)) & 255)) >> 8;
+        if (still) { const int s = wxSin(fn * 2 + i * 23); x += (s > 40) - (s < -40); }
+        y += big || (((fn + i) & 1) && !hold);
+        while (x < 0) x += WXR;
+        while (x >= WXR) x -= WXR;
+        if (y >= SH) { y = TOP; x = rnd(WXR); }
+        if (y < TOP) { y = SH - 1; x = rnd(WXR); }
+        wxX[i] = (uint8_t)x; wxY[i] = (uint8_t)y;
+    }
+}
+
+static void updateWeather() {
+    const Planet &p = PLR;
+    const int dc = cam - lastCam;
+>>>>>>>
+
+@@ sketch.cpp
+<<<<<<<
+    if (p.weather == WX_RAIN || p.weather == WX_DRIZZLE || p.weather == WX_ACID) wxMoveRain(dc, nWx, FALL[p.weather - WX_RAIN][0], p.weather == WX_RAIN);   // GBA: patch 13-weather-fast
+    else
+=======
+    if (p.weather == WX_RAIN || p.weather == WX_DRIZZLE || p.weather == WX_ACID) wxMoveRain(dc, nWx, FALL[p.weather - WX_RAIN][0], p.weather == WX_RAIN);   // GBA: patch 13-weather-fast
+    else if (p.weather == WX_SNOW) wxMoveSnow(dc, nWx);   // GBA: patch 16-weather-iwram
+    else
+>>>>>>>
