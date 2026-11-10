@@ -1,12 +1,19 @@
-# 21-lod: level of detail. gbaLod is 0 normally, 1 after a play frame that took over ~27 ms, 2 over ~33 ms (it falls back
-# a few frames after the last busy one, so nothing flickers). Only cosmetic drawing is reduced: half the weather
-# particles, no cloud banks / far giant / neon billboard text; at 2 also no plants. State, collision, enemies, shots,
-# the lander and the HUD are never touched (the particles are still moved, the plants are only not drawn).
+# 21-lod: level of detail (cosmetic drawing only). gbaLod is 0 normally; 1 or 2 when the previous play frame was slow
+# (> 22 / 27 ms) or the scene is crowded (a score of enemies, shots and sparks, worked out before drawing; GBA_LOD_T1/T2),
+# and it falls back 4-8 frames after the last busy one. Level 1: half the weather particles, no neon billboard text, no far
+# giant; level 2: a quarter of the particles. Scenery and everything in play are never touched. Clouds and plants (which pop) go too only with -DGBA_LOD_VISIBLE=1.
 
 @@ sketch.cpp
 <<<<<<<
 static int lastCam;
 =======
+#ifndef GBA_LOD_T1
+#define GBA_LOD_T1 14
+#define GBA_LOD_T2 28
+#endif
+#ifndef GBA_LOD_VISIBLE
+#define GBA_LOD_VISIBLE 0                                         // 1: busy scenes also drop the clouds and plants (they pop in and out)
+#endif
 static uint8_t gbaLod, gbaLodHold;                               // GBA: patch 21-lod
 static void gbaLodUpdate(uint32_t us) {
     const uint8_t want = us > 27000 ? 2 : us > 22000 ? 1 : 0;
@@ -14,6 +21,16 @@ static void gbaLodUpdate(uint32_t us) {
     else if (gbaLodHold) gbaLodHold--;
     else gbaLod = want;
 }
+static void gbaLodPredict() {                                    // from what is on screen, before drawing
+    int s = 0;
+    for (const auto &e : en) if (e.kind) s += 3;
+    for (const auto &q : es) if (q.life) s += 2;
+    for (const auto &q : shots) if (q.life) s += 1;
+    for (const auto &q : pt) if (q.life) s++;
+    const uint8_t want = s >= GBA_LOD_T2 ? 2 : s >= GBA_LOD_T1 ? 1 : 0;
+    if (want > gbaLod) { gbaLod = want; gbaLodHold = 30; }
+}
+#define gbaLodV (GBA_LOD_VISIBLE ? gbaLod : 0)
 static int lastCam;
 >>>>>>>
 
@@ -22,15 +39,8 @@ static int lastCam;
     const int nWx = WXN * wxLvl / 3;
 #ifdef SL_TRACE
 =======
-    const int nWx = (WXN * wxLvl / 3) >> (gbaLod ? 1 : 0);      // GBA: patch 21-lod (half the particles when busy)
+    const int nWx = (WXN * wxLvl / 3) >> gbaLod;      // GBA: patch 21-lod (half the particles when busy, a quarter when very busy)
 #ifdef SL_TRACE
->>>>>>>
-
-@@ sketch.cpp
-<<<<<<<
-    if (p.clouds) {                                             // dithered cloud banks drifting slowly
-=======
-    if (p.clouds && !gbaLod) {                                  // dithered cloud banks drifting slowly (GBA: patch 21-lod)
 >>>>>>>
 
 @@ sketch.cpp
@@ -49,14 +59,6 @@ static int lastCam;
 
 @@ sketch.cpp
 <<<<<<<
-static void drawPlants() {
-=======
-static void drawPlants() {
-    if (gbaLod > 1) return;                                     // GBA: patch 21-lod
->>>>>>>
-
-@@ sketch.cpp
-<<<<<<<
     dbg::markRenderStart();
     update();
 =======
@@ -67,9 +69,12 @@ static void drawPlants() {
 
 @@ sketch.cpp
 <<<<<<<
+    draw();
     dbg::markRenderEnd();
 #ifdef CHGBA
 =======
+    if (state == PLAY && !loadReq && !gba_warmUp) gbaLodPredict();   // GBA: patch 21-lod
+    draw();
     dbg::markRenderEnd();
     if (state == PLAY && !loadReq && !gba_warmUp) gbaLodUpdate(micros() - lodT0); else gbaLod = 0;   // GBA: patch 21-lod
 #ifdef CHGBA
@@ -77,7 +82,15 @@ static void drawPlants() {
 
 @@ sketch.cpp
 <<<<<<<
-static void drawStructures(int L) { hbgClipFor(L == 0 ? 1 : L == 1 ? 2 : -1); structures_(L); hbgClipFor(-1); }   // GBA: patch 04
+    if (p.clouds) {                                             // dithered cloud banks drifting slowly
 =======
-static void drawStructures(int L) { if (gbaLod > 1 && L > 0) return; hbgClipFor(L == 0 ? 1 : L == 1 ? 2 : -1); structures_(L); hbgClipFor(-1); }   // GBA: patch 04 (patch 21-lod: the mid and near layers' buildings are left out when very busy)
+    if (p.clouds && !gbaLodV) {                                  // dithered cloud banks drifting slowly (GBA: patch 21-lod)
+>>>>>>>
+
+@@ sketch.cpp
+<<<<<<<
+static void drawPlants() {
+=======
+static void drawPlants() {
+    if (gbaLodV > 1) return;                                    // GBA: patch 21-lod
 >>>>>>>
