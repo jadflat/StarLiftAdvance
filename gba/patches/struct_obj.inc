@@ -19,7 +19,7 @@ static bool blitObj(const CSpr &s, int x, int y, bool flip, const uint8_t *map, 
 // (the hills cover it as gba_clipY did) and the picture (what is drawn later still covers it). Pixels drawn before it (the
 // stars) where its pixels would have gone (opaque, above the clip) are cleared, as the blit would have covered them.
 int gba_skyBegin(const uint32_t *key); void gba_skyFail(); volatile uint32_t *gba_skyTiles(int off); bool gba_skySpr(int shape, int size, int x, int y, int off);
-static bool skyObj(const CSpr &s, int x, int y, const uint8_t *map) {
+__attribute__((noinline)) static bool skyObj(const CSpr &s, int x, int y, const uint8_t *map) {
     if (!card::ok() || x >= SW || x + s.w <= 0 || y >= SH || y + s.h <= 0) return true;
     const GfxClip cl = gfx__clip;
     if (cl.x0 || cl.y0 || cl.x1 != SW || cl.y1 != SH || !card::at(CARD_PIC + s.off)) return false;
@@ -32,22 +32,24 @@ static bool skyObj(const CSpr &s, int x, int y, const uint8_t *map) {
     if (!e) return false;
     const int nw = e->nw, y0 = y < 0 ? 0 : y, y1 = y + s.h > SH ? SH : y + s.h, w0 = x < 0 ? 0 : x >> 3, w1 = ((x + s.w > SW ? SW : x + s.w) + 7) >> 3;
     const uint8_t *const clip = gba_clipY;
-    uint8_t cmax[GFX_FB_STRIDE / 4];                                            // per 8 columns: the lowest open row + 1
+    uint8_t cmin[GFX_FB_STRIDE / 4], cmax[GFX_FB_STRIDE / 4];                     // per 8 columns: the clip's lowest and highest row
     int ry = y0;
     for (int i = w0; i < w1; i++) {
-        int m = 255;
-        if (clip) { m = 0; for (int j = 0; j < 8; j++) if (clip[i * 8 + j] > m) m = clip[i * 8 + j]; }
-        cmax[i] = (uint8_t)m; if (m > ry) ry = m;
+        int lo = 255, hi = 255;
+        if (clip) { lo = 255; hi = 0; for (int j = 0; j < 8; j++) { const int c = clip[i * 8 + j]; if (c > hi) hi = c; if (c < lo) lo = c; } }
+        cmin[i] = (uint8_t)lo; cmax[i] = (uint8_t)hi; if (hi > ry) ry = hi;
     }
+    const int sh = (x & 7) * 4, wx = x >> 3;                                    // (word i holds the picture's words i - wx and i - wx - 1)
     for (int r = y0; r < y1 && r < ry; r++) {
         uint32_t *const q = (uint32_t *)gfx_fb + r * (GFX_FB_STRIDE / 4);
+        const uint32_t *const m = e->data + (r - y) * 2 * nw + nw;
         for (int i = w0; i < w1; i++) {
             if (!q[i] || r >= cmax[i]) continue;
-            for (int j = 0; j < 8; j++) {
-                const int px = i * 8 + j, sx = px - x;
-                if (!((q[i] >> (j * 4)) & 15) || sx < 0 || sx >= s.w || (clip && r >= clip[px])) continue;
-                if ((e->data[(r - y) * 2 * nw + nw + (sx >> 3)] >> ((sx & 7) * 4)) & 15) q[i] &= ~(15u << (j * 4));
-            }
+            const int k = i - wx;
+            uint32_t v = (unsigned)k < (unsigned)nw ? m[k] << sh : 0;
+            if (sh && (unsigned)(k - 1) < (unsigned)nw) v |= m[k - 1] >> (32 - sh);
+            if (r >= cmin[i]) { uint32_t open = 0; for (int j = 0; j < 8; j++) if (r < clip[i * 8 + j]) open |= 15u << (j * 4); v &= open; }
+            q[i] &= ~v;
         }
     }
     const uint32_t key[5] = { rd.off, lut4[0], lut4[1], lut4[2], lut4[3] };
