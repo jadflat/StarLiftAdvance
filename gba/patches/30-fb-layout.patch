@@ -53,6 +53,15 @@ static inline __attribute__((always_inline)) void fb_st8(uint8_t *p, unsigned v)
 static inline __attribute__((always_inline)) void fb_nib(uint8_t *p, int x, unsigned c) {
     fb_st8(p, (x & 1) ? ((*p & 0x0Fu) | (c << 4)) : ((*p & 0xF0u) | c));
 }
+/* Pixel (x, y), 0 <= x < 240, 0 <= y < 160, in colour c: one halfword read-modify-write, the address straight from x and y.
+ * fb_pxh(x) is the halfword of the pixel's column at row 0 (+ 2 halfwords a row), fb_pxs(x) the pixel's bit offset in it. */
+#define fb_pxh(x)  ((volatile uint16_t *)(gfx_fb + ((x) >> 3) * 640) + (((x) >> 2) & 1))
+#define fb_pxs(x)  ((unsigned)((x) & 3) << 2)
+static inline __attribute__((always_inline)) void fb_px(int x, int y, unsigned c) {
+    volatile uint16_t *const h = fb_pxh(x) + y * 2;
+    const unsigned s = fb_pxs(x);
+    *h = (uint16_t)((*h & ~(0xFu << s)) | ((c & 15u) << s));
+}
 /* Pixels [x0, x1) (0 <= x0 < x1 <= 240) of the row FB_ROW(y) in colour c (0..15): a masked word store per group of 8. */
 /* The same, only the pixels of the nibble pattern pat (0x0F0F0F0F: even x, 0xF0F0F0F0: odd x, ~0u: all). */
 static inline __attribute__((always_inline)) void fb_spanM(uint8_t *row, int x0, int x1, unsigned c, uint32_t pat) {
@@ -282,9 +291,13 @@ static GFX_INLINE uint8_t *gfx__row(int y) { return FB_ROW(y); }
 <<<<<<<
         uint8_t *p = gfx_fb + yy * GFX_FB_STRIDE + (x >> 1);
         for (; bits; bits >>= 1, yy++, p += GFX_FB_STRIDE)
+            if ((bits & 1) && yy >= k.y0 && yy < k.y1) plot(p, x, c);
 =======
-        uint8_t *p = FB_ADDR(x, yy);
-        for (; bits; bits >>= 1, yy++, p += FB_STEP_Y)
+        volatile uint16_t *h = fb_pxh(x) + yy * 2;                       // glyph: the column's pointer and bit offset, once
+        const unsigned sh = fb_pxs(x);
+        const uint16_t keep = (uint16_t)~(0xFu << sh), val = (uint16_t)(c << sh);
+        for (; bits; bits >>= 1, yy++, h += FB_STEP_Y / 2)
+            if ((bits & 1) && yy >= k.y0 && yy < k.y1) *h = (uint16_t)((*h & keep) | val);
 >>>>>>>
 
 @@ lib/CHGame/chgame/Draw.cpp
@@ -420,7 +433,7 @@ static inline void plot(uint8_t *p, int x, uint8_t c) { fb_nib(p, x, c); }
     uint8_t *b = gfx_fb + y * GFX_FB_STRIDE + (x >> 1);
     *b = (x & 1) ? (uint8_t)((*b & 0x0F) | (c << 4)) : (uint8_t)((*b & 0xF0) | c);
 =======
-    fb_nib(FB_ADDR(x, y), x, c);
+    fb_px(x, y, c);
 >>>>>>>
 
 @@ sketch.cpp
