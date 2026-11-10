@@ -266,8 +266,7 @@ RAMFUNC(blitRd) static void new_blitRd(Rd &rd, int w, int h, int x, int y, bool 
 #pragma clang loop unroll(disable)
                 for (int k = a; k < e; k++) {
                     if (yy >= clip[k]) continue;
-                    uint8_t *q = FB_X(row, k);
-                    *q = (k & 1) ? (uint8_t)((*q & 0x0F) | (col << 4)) : (uint8_t)((*q & 0xF0) | (col & 0x0F));
+                    fb_nib(FB_X(row, k), k, col & 0x0F);
                 }
             } else if (n > 2) {                                                  // gfx_hline(x0, yy, n, col)
                 const int a = x0 < hx0 ? hx0 : x0, e = x0 + n > hx1 ? hx1 : x0 + n;
@@ -276,8 +275,7 @@ RAMFUNC(blitRd) static void new_blitRd(Rd &rd, int w, int h, int x, int y, bool 
                 const int e = x0 + n > SW ? SW : x0 + n;
 #pragma clang loop unroll(disable)
                 for (int k = x0 < 0 ? 0 : x0; k < e; k++) {
-                    uint8_t *q = FB_X(row, k);
-                    *q = (k & 1) ? (uint8_t)((*q & 0x0F) | (col << 4)) : (uint8_t)((*q & 0xF0) | col);
+                    fb_nib(FB_X(row, k), k, col);
                 }
             }
         }

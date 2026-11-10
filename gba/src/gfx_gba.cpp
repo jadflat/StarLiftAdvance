@@ -42,12 +42,13 @@ void gfx__paletteTouch(void);
 #define GBA_FILL_SMOOTH 1                   // GBA_SCALE 240: 0 shows BG2 alone (a plain nearest-neighbour stretch, to compare)
 #endif
 
-#if defined(GBA_VRAMFB)
-__asm__(".global gfx_fb\n.set gfx_fb, 0x06008000");   // EXPERIMENT: timing only
-#elif GBA_NATIVE
-uint8_t gfx_fb[GFX_FB_BYTES] __attribute__((aligned(4), section(".ewram")));   // (IWRAM has no room for 19 KB)
+#if GBA_NATIVE
+// The back tile set in VRAM, column-major (patch 30-fb-layout): the frame is drawn straight into it, a flush flips BG0 to it.
+// gba_vblank points it at the other set after each flip; gfx_wait() holds the game until that has happened.
+uint8_t *gfx_fb = (uint8_t *)0x06008000;
 #else
-uint8_t gfx_fb[GFX_FB_BYTES] __attribute__((aligned(4)));
+static uint8_t s_fbMem[GFX_FB_BYTES] __attribute__((aligned(4)));
+uint8_t *gfx_fb = s_fbMem;
 #endif
 CHGfx Gfx;
 
@@ -93,6 +94,7 @@ void gba_vblank() {
     if (!gba_flipPending) return;
     s_shown = s_back; s_back ^= 1;
 #if GBA_NATIVE
+    gfx_fb = (uint8_t *)(0x06000000 + s_back * 0x8000);              // the set the next frame is drawn into
     REG_BG0CNT = (uint16_t)((s_shown ? 2 : 0) << 2 | 31 << 8 | 0x40);  // tile set A (char block 0) or B (2), map at 31, mosaic on
     mosaicStep();
     beamShow();
@@ -310,93 +312,6 @@ static void skyStart(const uint16_t *g) {   // at VBlank: line 0's colour now, t
 }
 #endif
 
-// gfx_fb -> the back set: row by row, one word (8 pixels) per tile.
-#if GBA_NATIVE
-// 30x20 tiles of 8 words; a frame row is 30 words, one per tile. A word costs 4 cycles to read from EWRAM (main.cpp's
-// 1 wait state) and 3 to str to VRAM; a single ldr adds 2 more (fetch, I cycle), so each row is read as three 10-word
-// ldm and stored with immediate offsets 32 bytes apart: ~7.2 cycles a word against ~9.6 for the C loop (mGBA: 0.6 ms a
-// frame less). A transpose in registers to stm whole tile rows costs the same again in pointer adds.
-static IWRAM_TEXT __attribute__((naked)) void convertTo(const uint32_t *src, volatile uint32_t *set) {
-    asm volatile(
-        "push {r4-r11, lr}\n"
-        "mov r12, #20\n"                            // bands of 8 rows (a row of tiles)
-        "1: mov lr, #8\n"
-        "2:\n"
-        ".irp g, 0, 320, 640\n"                     // tiles 0-9, 10-19, 20-29 of this row
-        "ldmia r0!, {r2-r11}\n"
-        "str r2, [r1, #\\g]\n      str r3, [r1, #\\g+32]\n  str r4, [r1, #\\g+64]\n  str r5, [r1, #\\g+96]\n"
-        "str r6, [r1, #\\g+128]\n  str r7, [r1, #\\g+160]\n str r8, [r1, #\\g+192]\n str r9, [r1, #\\g+224]\n"
-        "str r10, [r1, #\\g+256]\n str r11, [r1, #\\g+288]\n"
-        ".endr\n"
-        "add r1, r1, #4\n"                          // the next pixel row of the same tiles
-        "subs lr, lr, #1\n"
-        "bne 2b\n"
-        "add r1, r1, #960 - 32\n"                   // the next row of tiles
-        "subs r12, r12, #1\n"
-        "bne 1b\n"
-        "pop {r4-r11, lr}\n"
-        "bx lr\n");
-}
-#ifdef GBA_CONVCHECK
-extern volatile uint32_t gba_dbgN;
-extern "C" { volatile uint32_t gba_cvChecks, gba_cvBad, gba_cvBadFirst; }   // frames.py's CHECK line: every word, every frame
-#endif
-static void convert() {
-    volatile uint32_t *const set = (volatile uint32_t *)(0x06000000 + s_back * 0x8000);
-#ifndef GBA_VRAMFB
-    convertTo((const uint32_t *)gfx_fb, set);
-#endif
-#ifdef GBA_CONVCHECK
-    const uint32_t *src = (const uint32_t *)gfx_fb;
-    for (int y = 0; y < 160; y++)
-        for (int tx = 0; tx < 30; tx++)
-            if (set[(y >> 3) * 240 + tx * 8 + (y & 7)] != *src++ && !gba_cvBad++) gba_cvBadFirst = gba_dbgN << 16 | y << 8 | tx;
-    gba_cvChecks++;
-#endif
-}
-#elif GBA_SCALE == 240
-// 8-bit tiles (64 bytes, a tile row is 2 words) in char block 0 or 1; each 4-bit pixel p becomes the byte p + 1.
-static inline __attribute__((always_inline, target("arm"))) uint32_t spread8(uint32_t h) {       // 4 nibbles -> 4 bytes, + 1 each
-    h = (h | h << 8) & 0x00FF00FFu;
-    return ((h | h << 4) & 0x0F0F0F0Fu) + 0x01010101u;
-}
-static IWRAM_TEXT void convert() {
-    volatile uint32_t *const set = (volatile uint32_t *)(0x06000000 + s_back * 0x4000);
-    const uint32_t *src = (const uint32_t *)gfx_fb;
-    for (int y = 0; y < 128; y++) {
-        volatile uint32_t *d = set + (y >> 3) * 16 * 16 + (y & 7) * 2;  // tile row y/8, pixel row y%8 of its tiles
-        for (int tx = 0; tx < 16; tx++, d += 16) {
-            const uint32_t w = *src++;
-            d[0] = spread8(w & 0xFFFF);
-            d[1] = spread8(w >> 16);
-        }
-    }
-}
-#else
-#if GBA_SCALE == 125
-#define SET_BASE (0x06010000 + s_back * 16 * 32)
-#define TILE_ROW (32 * 8)                   // words from one row of tiles to the next
-#else
-#define SET_BASE (0x06000000 + s_back * 0x2000)
-#define TILE_ROW (16 * 8)
-#endif
-static IWRAM_TEXT void convert() {
-    volatile uint32_t *dst = (volatile uint32_t *)SET_BASE;
-    const uint32_t *src = (const uint32_t *)gfx_fb;
-    for (int ty = 0; ty < 16; ty++) {
-        for (int r = 0; r < 8; r++) {
-            volatile uint32_t *d = dst + r;
-            for (int tx = 0; tx < 16; tx += 4) {
-                const uint32_t a = src[0], b = src[1], c = src[2], e = src[3];
-                src += 4;
-                d[0] = a; d[8] = b; d[16] = c; d[24] = e;
-                d += 32;
-            }
-        }
-        dst += TILE_ROW;
-    }
-}
-#endif
 
 // Frame statistics for the emulator harness (tools/gdbdrive.py reads them over the debug stub): per flush, the time
 // since the last one and the time the CPU spent halted (idle) in between. busy = period - idle.
@@ -412,8 +327,10 @@ static void waitFlip() {
     gba_idleUs += micros() - t0;
 }
 
-// The framebuffer is copied into the back tile set at once, so it is free the moment present() returns: nothing waits for the
-// flip (a frame the VBlank has not shown yet is simply replaced by the newer one).
+// The framebuffer IS the back tile set: after present() it waits for its flip, so gfx_wait() holds the game until the VBlank has
+// shown it (and made the other set the back one). The set drawn into holds the frame from two frames ago: draw all of it.
+static uint8_t s_last;                      // the set last presented (the test snapshot reads it)
+extern "C" uint8_t *gba_lastFb() { return (uint8_t *)(0x06000000 + s_last * 0x8000); }
 // A fade to black (rgb565 0) or white by the blend unit: BLDY is the level (0-16), all layers and the backdrop fade.
 // (The semi-transparent beams keep their own blend.) Other screen modes use BLDCNT for alpha: the palette fade there.
 void gba_hwFade(uint8_t amount, uint16_t rgb565) {
@@ -445,7 +362,7 @@ static void present() {
 #if GBA_NATIVE
     objPresent();
 #endif
-    convert();
+    s_last = s_back;
     gba_convUs += micros() - c0;
     gba_flipPending = 1;
     const uint32_t now = micros();
@@ -467,7 +384,7 @@ void gfx_flushRect(int, int, int, int)      { present(); waitFlip(); }
 void gfx_flush(void)      { present(); waitFlip(); }
 void gfx_flushAsync(void) { present(); }
 bool gfx_busy(void)       { return false; }
-void gfx_wait(void)       { s_tWait = micros(); }
+void gfx_wait(void)       { waitFlip(); s_tWait = micros(); }
 int  gfx_flushRow(void)   { return GFX_H; }
 void gfx_waitRow(int)     {}
 void gfx_stream(gfx_streamFn, void *) {}
@@ -480,12 +397,11 @@ void gfx__begin(uint8_t spiDiv, uint8_t colorMode) {
         0x8410, 0xC618, 0x7800, 0x03E0, 0x000F, 0x8400, 0x0410, 0x4208
     };
     gfx_setPalette(defpal, 16);
-    memset(gfx_fb, 0, sizeof gfx_fb);
     for (int i = 0; i < 256; i++) PAL_BG[i] = 0;
 #if GBA_NATIVE
     for (volatile uint32_t *v = (volatile uint32_t *)0x06000000; v < (volatile uint32_t *)0x06010000; v++) *v = 0;   // both sets, the map
     volatile uint16_t *map = SBLOCK(31);
-    for (int ty = 0; ty < 20; ty++) for (int tx = 0; tx < 30; tx++) map[ty * 32 + tx] = (uint16_t)(ty * 30 + tx);
+    for (int ty = 0; ty < 20; ty++) for (int tx = 0; tx < 30; tx++) map[ty * 32 + tx] = (uint16_t)(tx * 20 + ty);
     REG_BG0CNT = 31 << 8;
     for (int i = 0; i < 32 * 32; i++) SBLOCK(30)[i] = 88;           // the ground's map: its blank tile until it is drawn
     REG16(0x0400000A) = 3 << 2 | 30 << 8 | 0x40 | 1;                 // BG1CNT: tiles at char block 3, map 30, mosaic, priority 1

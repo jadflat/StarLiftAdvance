@@ -86,23 +86,14 @@ __attribute__((section(".iwram.text"), noinline, target("arm"), minsize)) static
             if (a < 0) a = 0;
             if (b > SW) b = SW;
             if (b > a) {
-                uint8_t *q = FB_X(row, a);
-                if (a & 1) { *q = (uint8_t)((*q & 0x0F) | cl << 4); q++; a++; }
-                int n = (b - a) >> 1;
-#pragma clang loop unroll(disable)
-                for (; n && ((uintptr_t)q & 3); n--) *q++ = pair;
-#pragma clang loop unroll(disable)
-                for (; n >= 4; n -= 4, q += 4) *(uint32_t *)q = quad;
-#pragma clang loop unroll(disable)
-                for (; n; n--) *q++ = pair;
-                if ((b - a) & 1) *q = (uint8_t)((*q & 0xF0) | cl);
+                fb_span(row, a, b, cl);
             }
 #pragma clang loop unroll(disable)
             for (int e = 0; e < 2; e++) {                       // each end's dither: (x + y) odd among its three pixels
                 const int x0 = e ? cx + w - 3 : cx - w;
 #pragma clang loop unroll(disable)
                 for (int x = x0; x < x0 + 3; x++)
-                    if (((x + y) & 1) && (unsigned)x < SW) { uint8_t *q = row + (x >> 1); *q = (uint8_t)((x & 1) ? ((*q & 0x0F) | cl << 4) : ((*q & 0xF0) | cl)); }
+                    if (((x + y) & 1) && (unsigned)x < SW) fb_nib(FB_X(row, x), x, cl);
             }
             continue;
         }

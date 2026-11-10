@@ -60,10 +60,14 @@ uint8_t gba_remap(uint8_t *shoulders);
 static uint8_t s_shoulders;
 uint8_t gba_shoulders() { return test_script ? 0 : s_shoulders; }
 
+extern "C" uint8_t *gba_lastFb();
 uint8_t chgame_readButtons() {
     if (test_script) {
         const uint32_t g = chgame.frameCount;
-        if (g - 1 == test_snapAt && !test_snapDone) { memcpy(gba_snap, gfx_fb, GFX_FB_BYTES); test_snapDone = 1; }
+        if (g - 1 == test_snapAt && !test_snapDone) { {
+            const uint32_t *const last = (const uint32_t *)gba_lastFb();        // column-major in VRAM: back to the linear rows
+            for (int g8 = 0; g8 < 30; g8++) for (int y = 0; y < 160; y++) ((uint32_t *)gba_snap)[y * 30 + g8] = last[g8 * 160 + y];
+        } test_snapDone = 1; }
         return scriptButtons(g);
     }
     return gba_remap(&s_shoulders);
