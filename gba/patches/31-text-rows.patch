@@ -6,8 +6,7 @@ CHGAME_RAMFUNC(text35) int text35(int x, int y, const char *str, uint8_t c) {
     int x0 = x;
     for (; *str; str++) {
         char ch = *str;
-        if (ch == '
-') { x = x0; y += 7; continue; }
+        if (ch == '\n') { x = x0; y += 7; continue; }
         if (ch == '~') { x += 2; continue; }
         const uint8_t *g = glyph35(ch);
         if (g) glyph(x, y, g, 3, c);
@@ -26,8 +25,7 @@ CHGAME_RAMFUNC(text35) int text35(int x, int y, const char *str, uint8_t c) {
     for (;;) {
         uint32_t pk[40]; int16_t px[40]; int n = 0, xe = x; bool big = false;
         const char *s = str;
-        for (; *s && *s != '
-'; s++) {
+        for (; *s && *s != '\n'; s++) {
             if (*s == '~') { xe += 2; continue; }
             const uint8_t *g = glyph35(*s);
             if (g) {
