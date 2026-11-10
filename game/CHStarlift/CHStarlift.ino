@@ -20,7 +20,7 @@
 #include <chgame/Draw.h>
 #include <chgame/RamFunc.h>
 
-#define SL_VERSION "0.46"
+#define SL_VERSION "0.47"
 #define NOINL __attribute__((noinline))                     // small helpers called from many places: one copy saves flash
 
 // HOUSE index -> game colour
@@ -204,10 +204,11 @@ struct Fetch { int16_t x; uint8_t kind, st; };               // a fetch quest's 
 static Fetch fq;
 // each stage's hazards (0.46): a different mix from stage 3 on
 enum : uint8_t { HZ_LEAK = 1, HZ_SNIPER = 2, HZ_TUNNEL = 4, HZ_MAG = 8, HZ_VENTS = 16, HZ_METEORS = 32, HZ_EVAC = 64 };
-static const uint8_t HZ[8] = { 0, 0, HZ_LEAK | HZ_TUNNEL, HZ_SNIPER | HZ_METEORS, HZ_VENTS | HZ_TUNNEL | HZ_MAG,
+static const uint8_t HZ[8] = { 0, 0, HZ_TUNNEL, HZ_SNIPER | HZ_METEORS, HZ_VENTS | HZ_TUNNEL | HZ_MAG,
                                HZ_METEORS | HZ_LEAK | HZ_SNIPER, HZ_VENTS | HZ_MAG | HZ_TUNNEL, HZ_EVAC | HZ_METEORS | HZ_SNIPER | HZ_LEAK | HZ_VENTS };
 static uint8_t hz;                                            // this stage's
-static uint8_t leak, magT;
+static uint8_t leak, magT, chip;                              // chip: bullet hits since the last pip lost
+static uint8_t fqPic;                                         // the fetch call-out card's frames left
 static uint16_t evT;                                          // stage 8: frames to the reactor blowing                                    // leak: the tank holed; magT: a magnetic storm's frames left
 static int16_t tunX[2];                                       // wind tunnels (stage 4 on)
 static int16_t fqX[2], ventX[3];                               // ventX: stage 5 on, vents in the ground that erupt                                        // where this stage's cargo turns up
@@ -491,7 +492,7 @@ static void genStage() {
         m.st = M_IDLE; m.act = D_STAND; m.t = (uint8_t)rnd(60); m.face = (int8_t)(rnd(2) ? 1 : -1); m.look = (uint8_t)(hash(s + i * 71u) & 31);
     }
     nSaved = nLost = 0;
-    fq.st = 0; fqT = 200; fqN = (uint8_t)(stage < 2 ? 0 : stage < 5 ? 1 : 2);   // stage 3 on: fetch quests (two from stage 6)
+    fq.st = 0; fqT = 200; fqPic = 0; fqN = (uint8_t)(stage < 2 ? 0 : stage < 5 ? 1 : 2);   // stage 3 on: fetch quests (two from stage 6)
     for (int k = 0; k < fqN; k++) { int x = (baseRight ? 300 : W / 2) + (int)(hash(s + k * 89u) % (W / 2 - 300)); while (busyAt(x)) x += 23; fqX[k] = (int16_t)x; flatten(x, 24); }
     for (int k = 0; k < 2; k++) { int x = !(hz & HZ_TUNNEL) ? -999 : 600 + k * (W - 1200) + (int)(hash(s + k * 61u) % 120); tunX[k] = (int16_t)x; }
     leak = magT = 0; evT = (hz & HZ_EVAC) ? 3600 : 0;   // two minutes (the seconds fit the call-out)
@@ -580,6 +581,7 @@ static void newGame() {
     saveProgress(true);
 }
 static void fqDone();
+static void addFuel(int n) { fuel = (uint16_t)(fuel + n > FUEL_MAX ? FUEL_MAX : fuel + n); }
 static void gameOver() { state = OVER; overT = 0; newHi = score > 0 && score >= hiScore; sfx(S_OVER); synth::music(0); synth::engine(0); saveProgress(false); }
 
 // ---- the lander -----------------------------------------------------------------------------------------------------
@@ -605,7 +607,7 @@ static void damage(int n) {
     if (invT || lst == 2) return;
     sfx(S_HIT); shake = 6; invT = 80;
 #ifdef SLF_LEAK
-    if ((hz & HZ_LEAK) && !leak && rnd(2)) { leak = 1; say(MS_LEAK, 90); }     // a holed tank
+    if ((hz & HZ_LEAK) && !leak && lst == 0 && rnd(2)) { leak = 1; say(MS_LEAK, 90); }     // a holed tank
 #endif
     if (shield <= n) { shield = 0; wreck(); } else shield -= (uint8_t)n;
 }
@@ -706,6 +708,7 @@ static void updateLander(bool l, bool r, bool thr, bool gearEdge, bool fire, boo
         if (thrLvl >= 4) { lst = 0; gear = 2; ly -= 512; lvy = -40; onPad = 0; unloadT = 0; tripN = 0; }
         else {
             synth::engine(0);
+            for (const auto &c : crit) if (c.kind == 4 && absi(c.x - LX()) < 18 && fuel < FUEL_MAX) { addFuel(3); if (!(frameNo & 7)) sfx(S_FUEL); }   // a cow alongside: a milk run tops up the tank
             for (auto &it : items)                                   // things beside the lander are loaded
                 if (it.st == 1 && absi(it.x - LX()) < 20) {
                     it.st = it.kind == IT_SUPPLY ? 2 : 0;
@@ -935,6 +938,7 @@ static NOINL void snatch(Enemy &e, int x, int y) {
     if (e.st != 4 && (e.st != 5 || e.cargo)) return;
     const int by = e.st == 4 ? groundAt(burgerX + 35) - 8 - e.cargo / 2 : y + 6;   // the bag where it was: in the beam, or aboard
     addScore(500 * (sector + 1), x, by - 16); say(MS_FOOD_SNATCHED, 60);
+    addFuel(FUEL_MAX / 3); shield = shMax(); sfx(S_FUEL);              // the lander refuelled and mended for it
 #ifdef SL_TRACE
     fprintf(stderr, "snatch f%d\n", frameNo);
 #endif
@@ -1179,7 +1183,7 @@ static void updateEnemies() {
             }
             break;
         case E_TURRET:
-            if (lst != 2 && absi(X - ex) < 100 && Y < ey - 16 && (e.t % 70) == 0) eshot(ex, ey - 4, X, Y, (hz & HZ_SNIPER) ? 44 : 26, 1);   // (stage 6 on: a sniper's fast shot)
+            if (lst != 2 && absi(X - ex) < 100 && Y < ey - 16 && (e.t % 70) == 0) eshot(ex, ey - 4, X, Y, (hz & HZ_SNIPER) ? 38 : 26, 1);   // (stage 6 on: a sniper's fast shot)
             break;
         }
         if (!e.kind) continue;
@@ -1289,7 +1293,7 @@ static void updateShots() {
         s.x = (int16_t)(s.x + s.vx); s.y = (int16_t)(s.y + s.vy);
         const int x = s.x >> 4, y = s.y >> 4;
         if (y >= groundAt(x) || y < TOP) { s.life = 0; continue; }
-        if (lst != 2 && absi(x - X) < 7 && absi(y - Y) < 8) { s.life = 0; damage(1); }
+        if (lst != 2 && absi(x - X) < 7 && absi(y - Y) < 8) { s.life = 0; if (++chip >= 3) { chip = 0; damage(1); } else { sfx(S_CLANG); shake = 2; } }   // shots and meteors are weak: a pip every 3rd hit
         if (dlv == 3 && absi(x - scX) < 8 && absi(y - scY + 4) < 6) { s.life = 0; dlv = 1; boom(scX, scY, 10, 0); sfx(S_BOOM); }   // the bag falls; another speeder will come
     }
     for (auto &q : pt) {
@@ -1684,31 +1688,33 @@ static void drawItems() {
 // ---- fetch quests (stage 3 on): a call-out with a picture, cargo with beacons, lifted or landed on, taken to base -----
 static const CSpr *const FETCH[6] = { &C_FETCH0, &C_FETCH1, &C_FETCH2, &C_FETCH3, &C_FETCH4, &C_FETCH5 };   // 0-2 lifted, 3-5 landed on
 static void fqDone() {
-    fq.st = 0; fqT = 240; hoverT = 0; tankT = 160; shield = shMax();             // a full tank (filled after the call-out) and a mended hull
+    fq.st = 0; fqT = 240; fqPic = 0; hoverT = 0; tankT = 160; shield = shMax();             // a full tank (filled after the call-out) and a mended hull
     addScore(1500, doorX, groundAt(doorX) - 24); sfx(S_SAVED);
     wpn = (uint8_t)(wpn % 4 + 1); say((uint8_t)(MS_WPN1 + wpn - 1), 90);   // the reward: a laser power-up (and the call-out names it)
 }
 static void updateFetch() {
+    if (fqPic) fqPic--;
+    else if (fq.st == 1 && (frameNo % 1260) == 0) { fqPic = 100; sfx(S_WARN); }   // not fetched yet: the call-out again now and then
 #ifdef SLF_LEAK
-    if (leak && fuel && lst != 2 && !(frameNo & 3)) { fuel--; if (!(frameNo & 12)) part(LX(), LY() + 6, rnd(5) - 2, 8, 16, C_GOLD); }   // dripping
+    if (leak && fuel && lst == 0 && !(frameNo & 7)) { fuel--; part(LX() + rnd(5) - 2, LY() + 6, rnd(5) - 2, 10, 20, C_GOLD); part(LX(), LY() + 8, 0, 14, 14, C_RED); }   // dripping
 #endif
 #ifdef SLF_TUNNEL
     for (int k = 0; k < 2; k++) if (tunX[k] > 0 && lst == 0 && absi(tunX[k] - LX()) < 10) lvy = (int16_t)(lvy + (k ? 14 : -16));   // the first blows up, the second down
 #endif
 #ifdef SLF_EVAC
     if (evT) { if (--evT % 900 == 0) sfxSay(S_WARN, evT ? MS_EVAC : MS_MELTDOWN, 90, evT / 30); }   // every 30 s: the seconds left
-    else if ((hz & HZ_EVAC) && (frameNo % 90) == 0) { shake = 12; sfx(S_CRASH); if (lst == 0) damage(1); }   // the reactor gone: quakes
+    else if ((hz & HZ_EVAC) && (frameNo % 90) == 0) { shake = 10; sfx(S_CRASH); }   // the reactor gone: quakes
 #endif
 #ifdef SLF_MAG
     if ((hz & HZ_MAG) && !magT && (frameNo % 1100) == 600) { magT = 150; sfxSay(S_WARN, MS_MAG, 90); }
-    if (magT) { magT--; if (lst == 0 && !(frameNo & 3)) lvx = (int16_t)(lvx + rnd(41) - 20); }   // the controls drift
+    if (magT) { magT--; if (lst == 0 && !(frameNo & 3)) lvx = (int16_t)(lvx + rnd(31) - 15); }   // the controls drift
 #endif
-    if ((hz & HZ_METEORS) && (frameNo % (200 - stage * 15)) == 0 && LY() > TOP) { const int mx = LX() + rnd(120) - 60; eshot(mx, TOP - 8, mx + rnd(41) - 20, groundAt(mx), 26, 2); }   // stage 6 on: meteors
+    if ((hz & HZ_METEORS) && (frameNo % 180) == 0) { const int mx = LX() + rnd(120) - 60; eshot(mx, TOP + 1, mx + rnd(41) - 20, groundAt(mx), 26, 2); }   // stage 6 on: meteors
     for (int k = 0; k < 3; k++) {                                       // the vents: rumble, then a column of fire (or steam) 60 px high
         const int vx = ventX[k], ph = (frameNo + k * 53) % 160;
         if (vx < 0 || ph < 110 || absi(vx - LX()) > 90) continue;
         const int gy = groundAt(vx);
-        if (ph >= 125) { part(vx + rnd(5) - 2, gy - 2, rnd(13) - 6, -30 - rnd(20), 20, planet == 4 ? C_RED : C_WHITE); if (absi(vx - LX()) < 6 && LY() > gy - 64) damage(1); }
+        if (ph >= 125) { part(vx + rnd(5) - 2, gy - 2, rnd(13) - 6, -30 - rnd(20), 20, planet == 4 ? C_RED : C_WHITE); if (absi(vx - LX()) < 6 && LY() > gy - 64) { lvy = (int16_t)(lvy - 40); if (!(frameNo & 15)) chip++; } }
         else if ((frameNo & 7) == 0) shake = 2;
     }
     if (!fq.st) {
@@ -1716,7 +1722,7 @@ static void updateFetch() {
             fqN--;
             const int k = stage + fqN;
             fq = { fqX[fqN], (uint8_t)((k % 3 ? 0 : 3) + (k >> 1) % 3), 1 };
-            sfxSay(S_WARN, (uint8_t)(MS_FQ0 + fq.kind), 120);
+            sfx(S_WARN); fqPic = 100;
         }
         return;
     }
@@ -2437,7 +2443,7 @@ static void drawWorld() {
         if (w * 2 <= SW - 8) { w *= 2; R((SW - w) / 2 - 3, TOP + 3, w + 6, 13, C_INK); text35x2((SW - w) / 2, TOP + 5, b, (frameNo & 4) ? C_WHITE : C_GOLD); }   // a call-out: big
         else { R((SW - w) / 2 - 3, TOP + 3, w + 6, 9, C_INK); textC(TOP + 4 - UY, b, (frameNo & 4) ? C_WHITE : C_GOLD); }
     }
-    if (bannerT && banner >= MS_FQ0 && banner <= MS_FQ5) { panel(36, 36); blitBC(*FETCH[fq.kind], 64 + UX, 55 + UY, false); tC(60, fq.kind < 3 ? MS_FQ_LIFT : MS_FQ_LAND, C_WHITE); }   // the call-out's picture
+    if (fqPic) { panel(82, 44); tC(85, (uint8_t)(MS_FQ0 + fq.kind), C_GOLD); blitBC(*FETCH[fq.kind], 64 + UX, 110 + UY, false); tC(114, fq.kind < 3 ? MS_FQ_LIFT : MS_FQ_LAND, C_WHITE); }   // the call-out's picture
 }
 
 // ---- title, menus ------------------------------------------------------------------------------------------------------
@@ -2532,26 +2538,43 @@ static void drawOptions() {
 #endif
 }
 
+// the who's-who rows: picture, dx, dy, the enemy that must be about (4 a turret, 5 a worm, 0 always) or a hazard bit (0x80 | HZ_..), message, colour
+struct WhoRow { const CSpr *sp; int8_t dx, dy; uint8_t kind, msg, col; };
+static const WhoRow WHO[13] = {
+    { &C_MAN_WAVE1, 10, 0, 0, MS_R_COLONIST, C_GREEN }, { &C_SAUCER0, 6, 2, 0, MS_R_UFO, C_RED }, { &C_SNATCH0, 10, 0, 0, MS_R_STINGER, C_RED },
+    { &C_MINE0, 13, 1, 0, MS_R_MINE, C_GOLD }, { &C_TURRET, 11, 3, E_TURRET, MS_R_TURRET, C_RED }, { &C_WORM_UP, 10, -2, E_WORM, MS_R_WORM, C_RED },
+    { &C_IHZ_LEAK, 12, 2, 0x80 | HZ_LEAK, MS_R_LEAK, C_GOLD }, { &C_IHZ_SNIPER, 12, 1, 0x80 | HZ_SNIPER, MS_R_SNIPER, C_RED },
+    { &C_IHZ_TUNNEL, 12, 1, 0x80 | HZ_TUNNEL, MS_R_TUNNEL, C_WHITE }, { &C_IHZ_MAG, 12, 1, 0x80 | HZ_MAG, MS_R_MAG, C_GOLD },
+    { &C_IHZ_VENTS, 12, 2, 0x80 | HZ_VENTS, MS_R_VENTS, C_RED }, { &C_IHZ_METEORS, 12, 1, 0x80 | HZ_METEORS, MS_R_METEOR, C_GOLD },
+    { &C_IHZ_EVAC, 12, 1, 0x80 | HZ_EVAC, MS_R_EVAC, C_RED } };
+
 static void drawIntro() {
     drawWorld();
 #ifndef SL_SLIM
-    panel(30, 68);
     char s[28];
-    if (timer <= 100) {                                                    // who's who
-        panel(18, 106);
-        textCS(21, T(MS_WHO), C_GOLD);
-        bool has[7] = { true, true, true, true, false, false, false };    // UFO, stinger, mine come anywhere
-        for (const auto &e : en) if (e.kind) has[e.kind] = true;
+    if (timer <= 100) {                                                    // (100: who's who, 50: hazards; each waits for a key)
+        const int i0 = timer <= 50 ? 6 : 0, i1 = i0 ? 13 : 6;
+        int n = 0, m = 0;
+        for (int i = i0; i < i1; i++) {
+            const uint8_t k = WHO[i].kind;
+            bool h = k & 0x80 ? (hz & k) != 0 : !k;
+            if (!(k & 0x80)) for (const auto &e : en) h |= e.kind == k;
+            if (h) { m |= 1 << i; n++; }
+        }
+        panel(18, 25 + n * 13);                                            // the card just as tall as its rows (and the key line)
+        textCS(21, T(i0 ? MS_HAZARDS : MS_WHO), C_GOLD);
         int y = 32 + UY;
-        auto row = [&](uint8_t msg, uint8_t col) { text35(32 + UX, y + 3, T(msg), col); y += 13; };
-        blitBC(C_MAN_WAVE1, 17 + UX, y + 11, false); row(MS_R_COLONIST, C_GREEN);
-        blit(*SAUCER[(frameNo >> 2) & 3], 6 + UX, y + 2, false, 255, EMAP); row(MS_R_UFO, C_RED);
-        blit(C_SNATCH0, 10 + UX, y, false); row(MS_R_STINGER, C_RED);
-        blit(C_MINE0, 13 + UX, y + 1, false); row(MS_R_MINE, C_GOLD);
-        if (has[E_TURRET]) { blit(C_TURRET, 11 + UX, y + 3, false); row(MS_R_TURRET, C_RED); }
-        if (has[E_WORM]) { R(11 + UX, y + 4, 13, 6, C_GND); R(13 + UX, y + 2, 9, 3, C_RED); row(MS_R_WORM, C_RED); }
+        for (int i = i0; i < i1; i++) {
+            const WhoRow &r = WHO[i];
+            if (!(m >> i & 1)) continue;
+            const bool ufo = r.sp == &C_SAUCER0;
+            if (ufo) blit(*SAUCER[(frameNo >> 2) & 3], r.dx + UX, y + r.dy, false, 255, EMAP); else blit(*r.sp, r.dx + UX, y + r.dy, false);
+            text35(32 + UX, y + 3, T(r.msg), r.col); y += 13;
+        }
+        if (frameNo & 16) textC(y - UY + 1, T(MS_PRESS_A), C_SILVER);
         return;
     }
+    panel(30, 68);
     fmt(s, T(MS_STAGE_N), stage + 1);
     textC(34, s, C_SILVER);
     textC(44, PLR.name, C_GOLD);
@@ -2796,8 +2819,9 @@ static void update() {
     case INTRO:
         updateWeather(); updateCritters();
         updateCamera();
-        if ((edge & 4) && timer > 100) timer = 100;                       // A: on to who's who, then to play
-        else if (--timer <= 0 || ((edge & 4) && timer < 95)) { state = PLAY; say((stage & 3) == 3 ? (uint8_t)(MS_MOTHER + ((stage >> 2) & 3)) : hz ? (uint8_t)(hz == HZ[4] ? MS_VENTS : MS_METEORS) : wxLvl == 3 ? MS_STORM : MS_FLY_SAFE, 50); }
+        if (timer > 100) { timer--; if (edge) timer = 100; }              // the stage card (a key: on to who's who)
+        else if (edge && timer == 100 && hz) timer = 50;                  // who's who waits for a key; then the hazards page
+        else if (edge) { state = PLAY; say((stage & 3) == 3 ? (uint8_t)(MS_MOTHER + ((stage >> 2) & 3)) : hz ? (uint8_t)(hz == HZ[4] ? MS_VENTS : MS_METEORS) : wxLvl == 3 ? MS_STORM : MS_FLY_SAFE, 50); }
         break;
     case PLAY:
 #ifdef SL_DLV
