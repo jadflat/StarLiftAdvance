@@ -172,6 +172,14 @@ def main():
         assert cols in t, "gba.ld changed: update the check build's list"
         ld = BUILD / "gba_check.ld"
         ld.write_text(t.replace(cols, ""), newline="\n")
+    drop = os.environ.get("GBA_LD_DROP", "").split()    # section names taken out of gba.ld (a GBA_PROF build needs ~120 B of IWRAM)
+    if drop:
+        t = ld.read_text()
+        for d in drop:
+            assert d in t, d
+            t = t.replace(d, "")
+        ld = BUILD / "gba_drop.ld"
+        ld.write_text(t, newline="\n")
     link = ["zig", "c++"] + TARGET + ["-nostdlib", "-static", f"-Wl,-T,{ld}",
             "-Wl,--gc-sections"]
     link += [f"-Wl,--wrap={w}" for w in WRAPS]

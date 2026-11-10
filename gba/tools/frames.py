@@ -42,9 +42,10 @@ local CONV = {a("gba_convUs")}
 local shotAt, shotName = nil, 0
 local PSUM, PFR, BST = {a("gba_profSum")}, {a("gba_profFrames")}, {a("gba_blitStat")}
 local PROF, PCN, PCR, pseen = {1 if prof else 0}, {a("gba_pcN")}, {a("gba_pcRing")}, 0
+local pprev = {{}}
 local pf = PROF == 1 and io.open(out .. "samples.txt", "w") or nil
 local CHK = {{ {{"scenery", {a("gba_scChecks")}, {a("gba_scBad")}, {a("gba_scBadFirst")}}}, {{"blit", {a("gba_blChecks")}, {a("gba_blBad")}, {a("gba_blBadFirst")}}}, {{"ground layer", {a("gba_gcChecks")}, {a("gba_gcBad")}, {a("gba_gcBadFirst")}}}, {{"convert", {a("gba_cvChecks")}, {a("gba_cvBad")}, {a("gba_cvBadFirst")}}} }}   -- GBA_SCENECHECK builds
-callbacks:add("frame", function()
+local function body()
   local fr = emu:currentFrame()
   if finished then return end
   if not started then                       -- the first callback: the test marker into SRAM, and start over (main.cpp)
@@ -76,6 +77,8 @@ callbacks:add("frame", function()
     for i = pseen, pn - 1 do pf:write(string.format("%x", emu:read32(PCR + (i % 4096) * 4)) .. {NL}) end
     pseen = pn
   end
+  local pcur, pdel = {{}}, {{}}
+  if PROF == 1 and PSUM > 0 then for i = 0, 11 do pcur[i] = emu:read32(PSUM + 4 * i); pdel[i] = pcur[i] - (pprev[i] or 0); pprev[i] = pcur[i] end end
   for k = seen, n - 1 do
     if pf then pf:write("F " .. k .. " " .. (emu:read32(P + (k % 128) * 4) - emu:read32(I + (k % 128) * 4)) .. " " .. fr .. {NL}) end
     local p = emu:read32(P + (k % 128) * 4)
@@ -83,7 +86,8 @@ callbacks:add("frame", function()
     if k > 2 and k <= {frames} then
       tot = tot + 1
       if b > worst then worst = b; worstAt = k end
-      if b > {os.environ.get("FR_THRESH","33333")} then over = over + 1; overList = overList .. " " .. k .. ":" .. math.floor(b / 100) / 10 end
+      if b > {os.environ.get("FR_THRESH","33333")} then over = over + 1; overList = overList .. " " .. k .. ":" .. math.floor(b / 100) / 10
+        if PROF == 1 and n - seen == 1 then local t = ""; for i = 0, 11 do t = t .. " " .. i .. ":" .. (pdel[i] or 0) end; f:write("OVER " .. k .. " " .. math.floor(b / 100) / 10 .. " ms, prof us:" .. t .. {NL}) end end
       local h = math.floor(b / 2000); hist[h] = (hist[h] or 0) + 1
       cs = cs + p; cb = cb + b; cn = cn + 1; if b > cm then cm = b end
       if k % 250 == 0 then
@@ -117,7 +121,8 @@ callbacks:add("frame", function()
     if pf then pf:write("end" .. {NL}); pf:close() end
     finished = true
   end
-end)
+end
+callbacks:add("frame", function() local ok, e = pcall(body); if not ok then f:write("LUAERR " .. tostring(e) .. {NL}); f:flush(); finished = true end end)
 '''
 (outdir / "frames.lua").write_text(lua, newline="\n")
 log = outdir / "log.txt"
