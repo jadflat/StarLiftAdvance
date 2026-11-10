@@ -80,7 +80,7 @@ def apply_patches(gen):
                     raise SystemExit(f"PATCH FAILED: {f.name}:{i + 1}: expected '@@ <file>' or a # comment")
                 i += 1
                 continue
-            target, at = gen / lines[i][3:].strip(), i + 1
+            nm = lines[i][3:].strip(); target, at = (gen.parent if nm.startswith("lib/") else gen) / nm, i + 1
             try:
                 a, m, b = lines.index("<<<<<<<", i), lines.index("=======", i), lines.index(">>>>>>>", i)
             except ValueError:
