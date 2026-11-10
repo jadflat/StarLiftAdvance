@@ -75,8 +75,10 @@ static void skyStart(const uint16_t *g);
 static void mosaicStep();
 static void beamShow();
 static void objShow();
+static void skyShow();
+static void skyPresent();
 static uint8_t s_g1x[2];                    // BG1's scroll per set (see gba_groundScroll)
-static uint8_t s_hx[2][2], s_hOn[2];        // the hills' layers (BG2 far, BG3 mid): scroll per set, shown or not (gba_hillScroll)
+static uint8_t s_hx[2][2], s_hOn[2];        // the hills' layers (far, mid: BG3, BG2 since patch 17): scroll per set, shown or not (gba_hillScroll)
 static uint8_t s_g1xNext, s_hxNext[2], s_hOnNext;   // the frame being drawn's: given to its set by present() (a frame is
                                             // drawn while the one before still waits for its flip, so not straight to s_back)
 #endif
@@ -92,9 +94,10 @@ void gba_vblank() {
     mosaicStep();
     beamShow();
     objShow();
+    skyShow();
     REG16(0x04000014) = s_g1x[s_shown];                              // BG1HOFS
-    REG16(0x04000018) = s_hx[s_shown][0];                           // BG2HOFS: the far hills
-    REG16(0x0400001C) = s_hx[s_shown][1];                           // BG3HOFS: the mid hills
+    REG16(0x0400001C) = s_hx[s_shown][0];                           // BG3HOFS: the far hills (patch 17)
+    REG16(0x04000018) = s_hx[s_shown][1];                           // BG2HOFS: the mid hills
     REG_DISPCNT = (uint16_t)((REG_DISPCNT & ~0x0C00) | (s_hOn[s_shown] ? 0x0C00 : 0));   // only under frames that drew them
     if (s_palPending) { for (int i = 1; i < 16; i++) PAL_BG[i] = PAL_OBJ[i] = s_pal[i]; s_palPending = 0; }
     skyStart(s_grad[s_shown]);
@@ -124,7 +127,7 @@ void gba_groundScroll(int x) { s_g1xNext = (uint8_t)x; }
 void gba_hillScroll(int far, int mid) { s_hxNext[0] = (uint8_t)far; s_hxNext[1] = (uint8_t)mid; s_hOnNext = 1; }
 // ---- see-through tractor beams: the game's beam pattern drawn into 32x64 sprites (semi-transparent: the hardware blends
 // them over the picture). Sprites are per tile set: drawn into the back set's tiles while the frame is drawn, shown with it.
-enum { BEAM_SPR = 12, BEAM_TILES = 32 };                         // sprites a set; a 32x64 sprite is 32 tiles (1 KB)
+enum { BEAM_SPR = 9, BEAM_TILES = 32 };                          // sprites a set; a 32x64 sprite is 32 tiles (1 KB) (9: room for the sky's)
 struct BeamSpr { int16_t x, y; };
 static BeamSpr s_beam[2][BEAM_SPR];
 static uint8_t s_beamN[2];
@@ -199,6 +202,7 @@ volatile uint32_t *gba_objAdd(int shape, int size, int tiles, int x, int y, int 
 static void objPresent() {                                      // the frame drawn goes with the set present() fills
     s_setN[s_back] = s_objStamp[s_objCur] == gba_dbgN ? s_objN[s_objCur] : 0;
     s_setBuf[s_back] = s_objCur;
+    skyPresent();                                                // (patch 17's sky sprites, the same way)
     s_objCur ^= 1;
 }
 static void objShow() {                                          // at the flip: the shown set's sprites
@@ -208,6 +212,49 @@ static void objShow() {                                          // at the flip:
         if (i >= n) { o[0] = 0x0200; continue; }
         const ObjSpr &q = s_obj[s_setBuf[s_shown]][n - 1 - i];
         o[0] = q.a0; o[1] = q.a1; o[2] = q.a2;
+    }
+}
+
+// ---- the sky object (patch 17-sky-obj): a planet or sun as up to 2 priority 3 sprites, behind the hills. In the picture
+// sprites' two buffers (s_objCur, handed to a set by objPresent): tiles 576 up, 96 a buffer, OAM 24-25. The tiles are only
+// written when the picture (key) differs from the one the buffer already holds: most frames only place the sprites.
+enum { SKY_T0 = BEAM_SPR * BEAM_TILES * 2, SKY_TS = 96, SKY_OAM = 24, SKY_SPR = 2 };
+static uint16_t s_sky[2][SKY_SPR][3];
+static uint8_t s_skyN[2], s_skySetN[2], s_skySetBuf[2] = { 1, 1 };
+static uint32_t s_skyStamp[2] = { ~0u, ~0u };
+static uint32_t s_skyKey[2][5] = { { ~0u }, { ~0u } };
+int gba_skyBegin(const uint32_t *key) {                          // 1: fill the tiles (gba_skyTiles), 0: they hold it, -1: no
+    const int b = s_objCur;
+    uint32_t *k = s_skyKey[b];
+    bool same = true;
+    for (int i = 0; i < 5; i++) if (k[i] != key[i]) same = false;
+    if (!same && b == s_skySetBuf[s_shown] && s_skySetN[s_shown]) return -1;   // (the shown frame's tiles)
+    for (int i = 0; i < 5; i++) k[i] = key[i];
+    s_skyStamp[b] = gba_dbgN; s_skyN[b] = 0;
+    return same ? 0 : 1;
+}
+void gba_skyFail() { const int b = s_objCur; s_skyKey[b][0] = ~0u; s_skyN[b] = 0; }   // (not drawn after all: the pixels are)
+volatile uint32_t *gba_skyTiles(int off) { return (volatile uint32_t *)(0x06010000 + (SKY_T0 + s_objCur * SKY_TS + off) * 32); }
+bool gba_skySpr(int shape, int size, int x, int y, int off) {
+    const int b = s_objCur, n = s_skyN[b];
+    if (n >= SKY_SPR) return false;
+    s_sky[b][n][0] = (uint16_t)((y & 255) | 0x1000 | shape << 14);
+    s_sky[b][n][1] = (uint16_t)((x & 511) | size << 14);
+    s_sky[b][n][2] = (uint16_t)((SKY_T0 + b * SKY_TS + off) | 3 << 10);
+    s_skyN[b] = (uint8_t)(n + 1);
+    return true;
+}
+static void skyPresent() {
+    s_skySetN[s_back] = s_skyStamp[s_objCur] == gba_dbgN ? s_skyN[s_objCur] : 0;
+    s_skySetBuf[s_back] = s_objCur;
+}
+static void skyShow() {                                          // at the flip: the shown set's sprites
+    const int n = s_skySetN[s_shown];
+    for (int i = 0; i < SKY_SPR; i++) {
+        volatile uint16_t *o = OAM + (SKY_OAM + i) * 4;
+        if (i >= n) { o[0] = 0x0200; continue; }
+        const uint16_t *q = s_sky[s_skySetBuf[s_shown]][i];
+        o[0] = q[0]; o[1] = q[1]; o[2] = q[2];
     }
 }
 
@@ -431,8 +478,8 @@ void gfx__begin(uint8_t spiDiv, uint8_t colorMode) {
     REG16(0x0400000A) = 3 << 2 | 30 << 8 | 0x40 | 1;                 // BG1CNT: tiles at char block 3, map 30, mosaic, priority 1
     // the hills (patch 04-hills-bg): tiles at char block 1 from tile 88 (VRAM between the two picture sets), maps 14, 15;
     // their maps are filled before they are first shown
-    REG16(0x0400000C) = 1 << 2 | 14 << 8 | 0x40 | 3;                 // BG2CNT: the far hills, behind everything
-    REG16(0x0400000E) = 1 << 2 | 15 << 8 | 0x40 | 2;                 // BG3CNT: the mid hills
+    REG16(0x0400000E) = 1 << 2 | 14 << 8 | 0x40 | 2;                 // BG3CNT: the far hills, behind BG2 (patch 17: priority 2, the sky sprite 3 behind)
+    REG16(0x0400000C) = 1 << 2 | 15 << 8 | 0x40 | 2;                 // BG2CNT: the mid hills
     for (int i = 0; i < 128; i++) OAM[i * 4] = 0x0200;              // all sprites off
     REG_BLDCNT = 0x0100 | 0x0200 | 0x0400 | 0x0800 | 0x2000;        // semi-transparent sprites blend over BG0-3, the backdrop
     REG_BLDALPHA = 11 | 8 << 8;                                     // the beams 11/16, what is behind 8/16

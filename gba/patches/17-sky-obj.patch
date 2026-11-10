@@ -1,0 +1,10 @@
+# 17-sky-obj: the sky object as a hardware sprite behind the hills (struct_obj.inc's skyObj) instead of pixels clipped
+# row by row to the far hills' tops. gfx_gba.cpp puts the far and mid hills at priority 2 (the mid hills on BG2, in
+# front of the far ones on BG3) so that a priority 3 sprite is behind both. Needs patch 05.
+
+@@ sketch.cpp
+<<<<<<<
+        blit(c, SKY_AT[p.sky][0] - pc - c.w / 2, SKY_AT[p.sky][1] + (WDY + HUDX) / 2 - c.h / 2, false, 255, mp);
+=======
+        { const int x = SKY_AT[p.sky][0] - pc - c.w / 2, y = SKY_AT[p.sky][1] + (WDY + HUDX) / 2 - c.h / 2; if (!skyObj(c, x, y, mp)) blit(c, x, y, false, 255, mp); }   // GBA: patch 17
+>>>>>>>

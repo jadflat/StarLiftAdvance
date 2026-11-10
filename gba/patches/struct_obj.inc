@@ -14,3 +14,70 @@ static bool blitObj(const CSpr &s, int x, int y, bool flip, const uint8_t *map, 
     Rd rd = { nullptr, CARD_PIC + s.off, 0, true };
     return bcObj(rd, s.w, s.h, x, y, flip, lut4, prio);
 }
+
+// GBA, patch 17-sky-obj: the sky object (a planet, a sun, moons) as a priority 3 sprite: behind every background layer
+// (the hills cover it as gba_clipY did) and the picture (what is drawn later still covers it). Pixels drawn before it (the
+// stars) where its pixels would have gone (opaque, above the clip) are cleared, as the blit would have covered them.
+int gba_skyBegin(const uint32_t *key); void gba_skyFail(); volatile uint32_t *gba_skyTiles(int off); bool gba_skySpr(int shape, int size, int x, int y, int off);
+static bool skyObj(const CSpr &s, int x, int y, const uint8_t *map) {
+    if (!card::ok() || x >= SW || x + s.w <= 0 || y >= SH || y + s.h <= 0) return true;
+    const GfxClip cl = gfx__clip;
+    if (cl.x0 || cl.y0 || cl.x1 != SW || cl.y1 != SH || !card::at(CARD_PIC + s.off)) return false;
+    uint32_t lut4[4];
+    uint8_t *const lut = (uint8_t *)lut4;
+    for (int k = 0; k < 14; k++) lut[k] = map[k];
+    lut[14] = lut[15] = 0;
+    Rd rd = { nullptr, CARD_PIC + s.off, 0, true };
+    const BcEnt *e = bcGet(rd, s.w, s.h, false, lut4);
+    if (!e) return false;
+    const int nw = e->nw, y0 = y < 0 ? 0 : y, y1 = y + s.h > SH ? SH : y + s.h, w0 = x < 0 ? 0 : x >> 3, w1 = ((x + s.w > SW ? SW : x + s.w) + 7) >> 3;
+    const uint8_t *const clip = gba_clipY;
+    uint8_t cmax[GFX_FB_STRIDE / 4];                                            // per 8 columns: the lowest open row + 1
+    int ry = y0;
+    for (int i = w0; i < w1; i++) {
+        int m = 255;
+        if (clip) { m = 0; for (int j = 0; j < 8; j++) if (clip[i * 8 + j] > m) m = clip[i * 8 + j]; }
+        cmax[i] = (uint8_t)m; if (m > ry) ry = m;
+    }
+    for (int r = y0; r < y1 && r < ry; r++) {
+        uint32_t *const q = (uint32_t *)gfx_fb + r * (GFX_FB_STRIDE / 4);
+        for (int i = w0; i < w1; i++) {
+            if (!q[i] || r >= cmax[i]) continue;
+            for (int j = 0; j < 8; j++) {
+                const int px = i * 8 + j, sx = px - x;
+                if (!((q[i] >> (j * 4)) & 15) || sx < 0 || sx >= s.w || (clip && r >= clip[px])) continue;
+                if ((e->data[(r - y) * 2 * nw + nw + (sx >> 3)] >> ((sx & 7) * 4)) & 15) q[i] &= ~(15u << (j * 4));
+            }
+        }
+    }
+    const uint32_t key[5] = { rd.off, lut4[0], lut4[1], lut4[2], lut4[3] };
+    const int fill = gba_skyBegin(key);
+    if (fill < 0) return false;
+    static const uint8_t kShape[12][4] = {                                      // (as bcObj)
+        {0, 0, 1, 1}, {1, 0, 2, 1}, {2, 0, 1, 2}, {0, 1, 2, 2}, {1, 1, 4, 1}, {2, 1, 1, 4},
+        {1, 2, 4, 2}, {2, 2, 2, 4}, {0, 2, 4, 4}, {1, 3, 8, 4}, {2, 3, 4, 8}, {0, 3, 8, 8} };
+    const int nh = (s.h + 7) >> 3;
+    int off = 0;
+    for (int c0 = 0; c0 < nw; c0 += 8) {
+        const int cw = nw - c0 < 8 ? nw - c0 : 8;
+        int best = -1;
+        for (int k = 0; k < 12; k++)
+            if (kShape[k][2] >= cw && kShape[k][3] >= nh && (best < 0 || kShape[k][2] * kShape[k][3] < kShape[best][2] * kShape[best][3])) best = k;
+        if (best < 0 || off + kShape[best][2] * kShape[best][3] > 96 || !gba_skySpr(kShape[best][0], kShape[best][1], x + c0 * 8, y, off)) { gba_skyFail(); return false; }
+        const int tw = kShape[best][2], th = kShape[best][3];
+        if (fill) {
+            volatile uint32_t *t = gba_skyTiles(off);
+            for (int ty = 0; ty < th; ty++)
+                for (int tx = 0; tx < tw; tx++) {
+                    if (tx >= cw || ty * 8 >= s.h) { for (int k = 0; k < 8; k++) *t++ = 0; continue; }
+                    const uint32_t *src = e->data + ty * 8 * 2 * nw + c0 + tx;
+                    const int rows = s.h - ty * 8 < 8 ? s.h - ty * 8 : 8;
+                    int k = 0;
+                    for (; k < rows; k++, src += 2 * nw) *t++ = *src;
+                    for (; k < 8; k++) *t++ = 0;
+                }
+        }
+        off += tw * th;
+    }
+    return true;
+}
