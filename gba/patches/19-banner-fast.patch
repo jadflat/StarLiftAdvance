@@ -1,0 +1,18 @@
+# 19-banner-fast: the big call-out (text35x2: a gfx_fillRect a font pixel, every frame) from masks made once a call-out
+# (banner_fast.inc). The frames over 33.3 ms were mostly the ones with a call-out up: gfx_hline 3.5 ms a frame in them
+# against 1.6 ms in the others (stage 5, frames.py --prof).
+
+@@ sketch.cpp
+<<<<<<<
+static void drawWorld() {
+=======
+#include "banner_fast.inc"
+static void drawWorld() {
+>>>>>>>
+
+@@ sketch.cpp
+<<<<<<<
+text35x2((SW - w) / 2, TOP + 5, b, (frameNo & 4) ? C_WHITE : C_GOLD); }   // a call-out: big
+=======
+gbaBanner((SW - w) / 2, TOP + 5, b, (frameNo & 4) ? C_WHITE : C_GOLD); }   // a call-out: big (GBA: patch 19)
+>>>>>>>
