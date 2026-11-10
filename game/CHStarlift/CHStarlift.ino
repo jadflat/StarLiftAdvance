@@ -53,7 +53,7 @@ AUDIO_STEPS(SFX_STEPS) = {
 #define SLF_LEAK        // stage 4 on: a hit can hole the tank: fuel drips until the base pad mends it
 #define SLF_SNIPER      // stage 6 on: turrets take aim (a red sight line), then fire a fast shot
 #define SLF_TUNNEL      // stage 4 on: wind tunnels: columns of air blowing up or down
-#define SLF_EVAC        // stage 8: a timed evacuation: the reactor blows in 3 minutes, then quakes hurt
+#define SLF_EVAC        // stage 8: a timed evacuation: the reactor blows in 2 minutes, then quakes hurt
 #define SLF_MAG         // stage 7 on: magnetic storms: the scanner and arrow go dark, the lander drifts
 #endif
 struct SfxAt { uint8_t at, n, flags; };
@@ -494,7 +494,7 @@ static void genStage() {
     fq.st = 0; fqT = 200; fqN = (uint8_t)(stage < 2 ? 0 : stage < 5 ? 1 : 2);   // stage 3 on: fetch quests (two from stage 6)
     for (int k = 0; k < fqN; k++) { int x = (baseRight ? 300 : W / 2) + (int)(hash(s + k * 89u) % (W / 2 - 300)); while (busyAt(x)) x += 23; fqX[k] = (int16_t)x; flatten(x, 24); }
     for (int k = 0; k < 2; k++) { int x = !(hz & HZ_TUNNEL) ? -999 : 600 + k * (W - 1200) + (int)(hash(s + k * 61u) % 120); tunX[k] = (int16_t)x; }
-    leak = magT = 0; evT = (hz & HZ_EVAC) ? 5400 : 0;
+    leak = magT = 0; evT = (hz & HZ_EVAC) ? 3600 : 0;   // two minutes (the seconds fit the call-out)
     for (int k = 0; k < 3; k++) { int x = !(hz & HZ_VENTS) ? -999 : 380 + k * (W - 760) / 2 + (int)(hash(s + k * 37u) % 90); if (x > 0) while (busyAt(x)) x += 23; ventX[k] = (int16_t)x; }
     memset(en, 0, sizeof en);
     const int turrets = clampi(planet / 2 + sector * 2, 0, 4);
