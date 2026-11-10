@@ -26,7 +26,7 @@ enum ManDo : uint8_t { D_STAND, D_LOOK, D_GAZE, D_CHAT, D_WANDER, D_WAVE, D_CHEE
 struct Man { int16_t x, y; uint8_t st, act, t, home; int8_t face, vy; uint8_t by, look; };   // y in px (1/4 px when JET or DROP); by: the UFO holding it, + 1; look: suit colour and kit
 enum EnKind : uint8_t { E_NONE, E_UFO, E_STINGER, E_MINE, E_TURRET, E_WORM, E_MOTHER };
 struct Enemy { int16_t x, y; int8_t vx, vy; uint8_t kind, hp, st, t, target, hit, cargo; };   // x, y in 1/16 px; cargo: colonists aboard a UFO
-struct Shot { int16_t x, y; int8_t dir; uint8_t life, kind; };                         // px; kind 0 the laser, 1 the rotary cannon
+struct Shot { int16_t x, y; int8_t dir; uint8_t life, kind; int8_t vy; };                       // px; kind 0 the laser, 1 the rotary cannon
 struct EShot { int16_t x, y; int8_t vx, vy; uint8_t life, kind; };                     // 1/16 px
 struct Part { int16_t x, y; int8_t vx, vy; uint8_t life, col; };                       // 1/16 px
 struct SaveData { int32_t hi, score; uint8_t stage, lives, musicV, fxV, diff; };   // volumes 0-4; difficulty 0 easy, 1 normal, 2 hard

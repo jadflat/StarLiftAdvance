@@ -20,7 +20,7 @@
 #include <chgame/Draw.h>
 #include <chgame/RamFunc.h>
 
-#define SL_VERSION "0.44"
+#define SL_VERSION "0.45"
 #define NOINL __attribute__((noinline))                     // small helpers called from many places: one copy saves flash
 
 // HOUSE index -> game colour
@@ -192,10 +192,10 @@ enum { CHARGED = 15 };                                   // bumpT: frames until 
 static uint8_t diff = SL_DIFF;                                   // 0 easy, 1 normal, 2 hard (saved)
 #define dE (diff + 1)                                            // the difficulty in play, a step up: easy plays as the old normal, hard is harder still
 static uint8_t titleSel, pauseSel, helpPage, optSel, musicV = 4, fxV = 4;
-static uint8_t won;                                           // all eight worlds done
+static uint8_t won, wpn;                                      // wpn: the laser power-up, 0 none, 1 spread, 2 fat, 3 rapid, 4 twin                                           // all eight worlds done
 struct Fetch { int16_t x; uint8_t kind, st; };               // a fetch quest's cargo: st 0 none, 1 on the ground, 2 on the rope, 3 aboard
 static Fetch fq;
-static int16_t fqX[2];                                        // where this stage's cargo turns up
+static int16_t fqX[2], ventX[3];                               // ventX: stage 5 on, vents in the ground that erupt                                        // where this stage's cargo turns up
 static uint8_t fqN, fqT;                                      // quests still to come, frames to the next
 static uint8_t credits = 5;                                   // continues left this game
 static int gSaved, overT;                                 // colonists home this game; the game-over screen's clock
@@ -478,6 +478,7 @@ static void genStage() {
     nSaved = nLost = 0;
     fq.st = 0; fqT = 200; fqN = (uint8_t)(stage < 2 ? 0 : stage < 5 ? 1 : 2);   // stage 3 on: fetch quests (two from stage 6)
     for (int k = 0; k < fqN; k++) { int x = (baseRight ? 300 : W / 2) + (int)(hash(s + k * 89u) % (W / 2 - 300)); while (busyAt(x)) x += 23; fqX[k] = (int16_t)x; flatten(x, 24); }
+    for (int k = 0; k < 3; k++) { int x = stage < 4 ? -999 : 380 + k * (W - 760) / 2 + (int)(hash(s + k * 37u) % 90); if (x > 0) while (busyAt(x)) x += 23; ventX[k] = (int16_t)x; }
     memset(en, 0, sizeof en);
     const int turrets = clampi(planet / 2 + sector * 2, 0, 4);
     for (int k = 0; k < turrets; k++) {                                       // turrets on open ground between the camps
@@ -566,6 +567,7 @@ static void gameOver() { state = OVER; overT = 0; newHi = score > 0 && score >= 
 
 // ---- the lander -----------------------------------------------------------------------------------------------------
 static void wreck() {
+    wpn = 0;                                                          // the power-up goes with the lander
 #ifdef CHGBA
     gba_mosaic(12);                                                 // the GBA: the picture shatters for a moment
 #endif
@@ -627,6 +629,11 @@ static void touchDown() {
         if (m.st == M_IDLE && absi(m.x - x) <= 9) { m.st = M_LOST; nLost++; sfx(S_SQUASH); say(MS_SQUASHED, 50); part(m.x, m.y - 4, 0, -12, 20, C_WHITE); }
 }
 
+static bool newShot(int x, int y, int dir, uint8_t life, uint8_t kind, int vy = 0) {
+    for (auto &s : shots) if (!s.life) { s = { (int16_t)x, (int16_t)y, (int8_t)dir, life, kind, (int8_t)vy }; return true; }
+    return false;
+}
+
 static void updateLander(bool l, bool r, bool thr, bool gearEdge, bool fire, bool up) {
     if (invT) invT--;
     if (fireCd) fireCd--;
@@ -665,9 +672,10 @@ static void updateLander(bool l, bool r, bool thr, bool gearEdge, bool fire, boo
             s = { (int16_t)(LX() + facing * 8), (int16_t)(LY() + 2 + ((frameNo >> 1) & 1) - (frameNo & 1)), facing, 9, 1 };
             gunCd = 3; sfx(S_GUN);
         }
-        for (auto &s : shots) if (!s.life && !fireCd) {
-            s = { (int16_t)(LX() + facing * 9), (int16_t)(LY() - 1), facing, 26, 0 };
-            fireCd = 7; sfx(S_LASER);
+        if (!fireCd && newShot(LX() + facing * 9, LY() - 1, facing, 26, wpn == 2 ? 4 : 0)) {   // the laser, as the power-up has it
+            fireCd = wpn == 3 ? 3 : wpn == 2 ? 9 : 7; sfx(S_LASER);
+            if (wpn == 1) for (int v = -1; v <= 1; v += 2) newShot(LX() + facing * 9, LY() - 1, facing, 26, 0, v);   // spread: two more, fanning out
+            if (wpn == 4) newShot(LX() - facing * 9, LY() - 1, -facing, 26, 0);                                       // twin: one behind too
         }
     }
     if (thr && fuel > 0) { if (thrLvl < 6) thrLvl++; } else if (thrLvl) thrLvl = thrLvl > 2 ? thrLvl - 2 : 0;   // the engine spools up and down
@@ -1228,14 +1236,14 @@ static void updateShots() {
         if (!s.life) continue;
         s.life--;
         for (int step = 0; step < 7 && s.life; step++) {
-            if (s.kind == 3) s.y++; else s.x = (int16_t)(s.x + s.dir);
+            if (s.kind == 3) s.y++; else { s.x = (int16_t)(s.x + s.dir); if (step & 1) s.y = (int16_t)(s.y + s.vy); }
             if (s.y >= groundAt(s.x) && s.kind != 2) { part(s.x, s.y, -s.dir * 8, -10, 8, C_GOLD); s.life = 0; break; }
             for (auto &e : en) {
                 if (!e.kind) continue;
                 const int ex = e.x >> 4, ey = e.y >> 4, hw = e.kind == E_UFO ? 11 : e.kind == E_MOTHER ? 22 : 6;
                 if (e.kind == E_UFO && ey < TOP) continue;
                 if (absi(s.x - ex) <= hw && absi(s.y - ey) <= (s.kind >= 2 ? 8 : 5)) {
-                    if (s.kind >= 2) {
+                    if ((s.kind & 6) == 2) {
                         if (e.hit || (e.kind == E_WORM && e.st == 0)) continue;
                         e.hit = 30; part(s.x, s.y, -s.dir * 10, -8, 10, C_WHITE);
                         if (e.hp <= 4) killEn(e); else { e.hp -= 4; sfx(S_HIT); }
@@ -1246,6 +1254,7 @@ static void updateShots() {
                     if (s.kind == 1 && e.kind == E_MOTHER) break;                    // a cannon round does nothing to a mothership's armour
                     part(s.x, s.y, -s.dir * 10, -8, 8, C_WHITE);
                     if (e.kind == E_WORM && e.st == 0) { s.life = 1; e.hit = 0; e.hp++; }   // under the sand: the shot goes into the ground
+                    if (s.kind == 4 && e.hp > 1) e.hp--;                                     // the fat laser: double damage
                     if (--e.hp == 0) killEn(e); else { sfx(S_HIT); if (e.kind == E_WORM && e.st == 1) { e.st = 3; e.t = 0; } }
                     break;
                 }
@@ -1655,9 +1664,18 @@ static void drawItems() {
 static const CSpr *const FETCH[6] = { &C_FETCH0, &C_FETCH1, &C_FETCH2, &C_FETCH3, &C_FETCH4, &C_FETCH5 };   // 0-2 lifted, 3-5 landed on
 static void fqDone() {
     fq.st = 0; fqT = 240; hoverT = 0; tankT = 160; shield = shMax();             // a full tank (filled after the call-out) and a mended hull
-    addScore(1500, doorX, groundAt(doorX) - 24); sfxSay(S_SAVED, MS_FQ_DONE, 90);
+    addScore(1500, doorX, groundAt(doorX) - 24); sfx(S_SAVED);
+    wpn = (uint8_t)(wpn % 4 + 1); say((uint8_t)(MS_WPN1 + wpn - 1), 90);   // the reward: a laser power-up (and the call-out names it)
 }
 static void updateFetch() {
+    if (stage >= 5 && (frameNo % (200 - stage * 15)) == 0 && LY() > TOP) { const int mx = LX() + rnd(120) - 60; eshot(mx, TOP - 8, mx + rnd(41) - 20, groundAt(mx), 26, 2); }   // stage 6 on: meteors
+    for (int k = 0; k < 3; k++) {                                       // the vents: rumble, then a column of fire (or steam) 60 px high
+        const int vx = ventX[k], ph = (frameNo + k * 53) % 160;
+        if (vx < 0 || ph < 110 || absi(vx - LX()) > 90) continue;
+        const int gy = groundAt(vx);
+        if (ph >= 125) { part(vx + rnd(5) - 2, gy - 2, rnd(13) - 6, -30 - rnd(20), 20, planet == 4 ? C_RED : C_WHITE); if (absi(vx - LX()) < 6 && LY() > gy - 64) damage(1); }
+        else if ((frameNo & 7) == 0) shake = 2;
+    }
     if (!fq.st) {
         if (fqN && fqT && !--fqT) {
             fqN--;
@@ -1673,7 +1691,17 @@ static void updateFetch() {
     } else if (lst == 2) { fq.st = 1; fq.x = (int16_t)LX(); hoverT = 0; say(MS_FQ_DROP, 60); }   // the lander lost: the cargo falls where it was
     else if (fq.st == 2) { fq.x = (int16_t)LX(); if (absi(fq.x - basePadX - 20) < 24) fqDone(); }   // carried on the rope: set down at the base
 }
+static void drawVents() {
+    for (int k = 0; k < 3; k++) {
+        const int vx = ventX[k], sx = vx - cam, ph = (frameNo + k * 53) % 160;
+        if (vx < 0 || sx < -8 || sx > SW + 8) continue;
+        const int gy = groundAt(vx);
+        R(sx - 4, gy - 2, 9, 2, C_GNDD); R(sx - 2, gy - 3, 5, 1, ph >= 110 && (frameNo & 2) ? C_RED : C_GNDD);   // the vent's lip, glowing before it blows
+        if (ph >= 125) { const int h = ph < 135 ? (ph - 124) * 6 : 60; R(sx - 2, gy - h, 5, h, planet == 4 ? C_RED : C_SILVER); R(sx - 1, gy - h, 3, h, (frameNo & 2) ? C_GOLD : C_WHITE); }
+    }
+}
 static void drawFetch() {
+    drawVents();
     if (fq.st != 1 && fq.st != 2) return;
     const CSpr &sp = *FETCH[fq.kind];
     const int sx = fq.x - cam, by = fq.st == 2 ? LY() + 28 : groundAt(fq.x), ty = by - sp.h;
@@ -2171,6 +2199,7 @@ static void drawShots() {
     for (const auto &s : shots) {
         if (!s.life) continue;
         const int x = s.x - cam;
+        if (s.kind == 4) { R(x - s.dir * 13 - (s.dir < 0 ? 0 : 0), s.y - 1, 14, 3, C_ACC); R(x - s.dir * 13, s.y, 14, 1, C_WHITE); continue; }   // the fat laser: a thick beam
         if (s.kind >= 2) {                                                 // a plasma ball: a flickering halo round a white-hot core
             gfx_fillCircle(x, s.y, 4 + (frameNo & 1), (frameNo & 2) ? C_ACC : C_GOLD); gfx_fillCircle(x, s.y, 2, C_WHITE);
             if (frameNo & 1) part(s.x - s.dir * 4 + rnd(5) - 2, s.y - (s.dir ? 0 : 4), -s.dir * 6, s.dir ? 0 : -6, 6, C_GOLD);
@@ -2182,6 +2211,7 @@ static void drawShots() {
     for (const auto &s : es) {
         if (!s.life) continue;
         const int x = (s.x >> 4) - cam, y = s.y >> 4;
+        if (s.kind == 2) { R(x - 1, y - 1, 3, 3, C_GNDD); pset(x - (s.vx >> 3), y - 3, C_GOLD); pset(x - (s.vx >> 2), y - 6, C_RED); continue; }   // a meteor
         const uint8_t c = s.kind ? ((frameNo & 2) ? C_RED : C_GOLD) : ((frameNo & 2) ? C_GREEN : C_WHITE);
         pset(x, y, C_WHITE); pset(x - 1, y, c); pset(x + 1, y, c); pset(x, y - 1, c); pset(x, y + 1, c);
     }
@@ -2717,7 +2747,7 @@ static void update() {
         updateWeather(); updateCritters();
         updateCamera();
         if ((edge & 4) && timer > 100) timer = 100;                       // A: on to who's who, then to play
-        else if (--timer <= 0 || ((edge & 4) && timer < 95)) { state = PLAY; say((stage & 3) == 3 ? (uint8_t)(MS_MOTHER + ((stage >> 2) & 3)) : wxLvl == 3 ? MS_STORM : MS_FLY_SAFE, 50); }
+        else if (--timer <= 0 || ((edge & 4) && timer < 95)) { state = PLAY; say((stage & 3) == 3 ? (uint8_t)(MS_MOTHER + ((stage >> 2) & 3)) : stage >= 4 ? (uint8_t)(stage >= 5 ? MS_METEORS : MS_VENTS) : wxLvl == 3 ? MS_STORM : MS_FLY_SAFE, 50); }
         break;
     case PLAY:
 #ifdef SL_DLV
