@@ -126,6 +126,7 @@ enum { ESHOTS = 12, PARTS = 32, WXN = 48 * (GFX_W + 32) / 160, CRITS = 6, MEN = 
 #ifdef CHGBA                                       // StarLift Advance: the GBA's extras (gba/src)
 uint8_t gba_shoulders();                           // L (1) and R (2) held
 void gba_mosaic(uint8_t frames);                   // the picture breaks into blocks for a moment, settling back
+void gba_holdFrame();                               // a frame that shows nothing new (gfx_gba.cpp): the picture stays as it is
 void gba_hwFade(uint8_t amount, uint16_t rgb565);  // a fade to black or white by the blend registers (no palette rebuild)
 #endif
 // the screen: the CHGame board's 128x128, or another size the library is built for (StarLift Advance: 240x160)
@@ -173,7 +174,7 @@ static uint32_t rng = 1;
 static uint8_t wxLvl;
 static int topsAt[4] = { -9999, -9999, -9999, -9999 };       // the layer x of column 0 when the tops were made (-9999: none)
                                      // this stage's weather, rolled when it is built: 0 clear .. 3 a storm
-static bool loadReq;                                      // the stage's world is to be read from the card and the stage built
+static uint8_t loadReq;                                   // a stage's load, a part a frame: 3 its world is to be read from the card and the stage built, 2 the ground's tile and the scenery's tops made, 1 the palette set; 0 done
 
 // the lander: position 1/256 px, velocity 1/256 px a frame
 static int32_t lx, ly;
@@ -506,7 +507,6 @@ static void genStage() {
     }
     for (int k = 0; k < PLR.worms; k++) if (Enemy *e = spawnEn(E_WORM, 500 + k * 700, 100 + WDY)) e->hp = 12;
     if ((stage & 3) == 3) if (Enemy *e = spawnEn(E_MOTHER, alienX + 20, 34 + WDY)) e->hp = (uint8_t)(6 + stage / 2);   // easier (was 10 + stage)
-    buildTile();
     memset(shots, 0, sizeof shots); memset(es, 0, sizeof es); memset(pt, 0, sizeof pt); memset(booms, 0, sizeof booms); memset(pops, 0, sizeof pops);
     placeLanderOnPad(startPadX);
     cam = clampi(LX() - SW / 2, 0, W - SW);
@@ -565,7 +565,7 @@ static void saveProgress(bool inGame) {
 
 static void newStage() {
     planet = stage & 7;
-    loadReq = true;
+    loadReq = 3;
     state = INTRO; timer = 210;                                            // the stage card, then who's who
     synth::music((stage & 3) == 3 ? 9 : 1 + planet);                     // a boss stage: SHOWDOWN
 }
@@ -2600,6 +2600,7 @@ static void drawPause() {
 }
 
 static void draw() {
+    if (loadReq && card::ok()) return;                                 // a stage is loading: the last picture stays up
 #ifdef CHGBA
     {                                                                  // a fade in from black when a screen starts
         static uint8_t lastState = 255, fadeT;
@@ -2666,7 +2667,7 @@ static void draw() {
 // ---- update ------------------------------------------------------------------------------------------------------------
 static void toTitle() {
     state = TITLE; titleSel = 0; stage = 0; planet = 0; credits = 5; won = 0;
-    loadReq = true;
+    loadReq = 3;
     cam = 200; synth::music(0); synth::engine(0);
 }
 
@@ -2763,7 +2764,7 @@ static void update() {
     switch (state) {
     case TITLE: {
         if ((frameNo % 240) == 0) {                                 // show the next world
-            planet = (planet + 1) & 7; stage = planet; loadReq = true; cam = 200;
+            planet = (planet + 1) & 7; stage = planet; loadReq = 3; cam = 200;
         }
         uint8_t it[6];
         const uint8_t n = menuItems(it);
@@ -2954,10 +2955,11 @@ void loop() {
         if (hasSave) titleSel = 0;
     }
     card::frame();
-    if (!card::ok() && (frameNo % 60) == 2) card::open();
-    if (loadReq && card::ok() && card::copy((uint8_t *)&PLR, CARD_PLANET + (uint32_t)(stage & 7) * PLANET_LEN, PLANET_LEN)
+    if (!card::ok()) { if ((frameNo % 60) == 2) card::open(); }
+    else if (loadReq == 3) {                                      // (each part in a frame of its own, none drawn)
+      if (card::copy((uint8_t *)&PLR, CARD_PLANET + (uint32_t)(stage & 7) * PLANET_LEN, PLANET_LEN)
         && card::copy((uint8_t *)&PK, CARD_PACK + (uint32_t)(stage & 15) * sizeof(Pack), sizeof(Pack))) {
-        loadReq = false;
+        loadReq = 2;
 #ifdef CHGBA
         {   // the card's colours are in the CHGame order, where 0 is C_INK and 2 C_SKY0: Game.h swaps those two here
             auto fix = [](uint8_t &c) { if (c == 0) c = C_INK; else if (c == 2) c = C_SKY0; };
@@ -2966,15 +2968,20 @@ void loop() {
         }
 #endif
         genStage();
-        applyPalette();
         if (state == TITLE) cam = 200;
-    }
-    if (card::ok() && synth::wanted() >= 0) {                     // the next song, from the card
+      }
+    } else if (loadReq) {
+        if (--loadReq) { buildTile(); for (int L = 0; L < 4; L++) layerTops(L); }   // (the tops now, not in the first frame drawn)
+        else applyPalette();
+    } else {                                                      // the next song, from the card
         const int id = synth::wanted();
-        if (card::copy(synth::buffer(), CARD_SONG + SONG_OFF[id], SONG_LEN[id])) synth::loaded();
+        if (id >= 0 && card::copy(synth::buffer(), CARD_SONG + SONG_OFF[id], SONG_LEN[id])) synth::loaded();
     }
     draw();
     dbg::markRenderEnd();
+#ifdef CHGBA
+    if (loadReq && card::ok()) gba_holdFrame(); else               // a stage is loading: nothing new to show
+#endif
     gfx_flushAsync();
 #ifdef CHSIM
     uint8_t idle = 0;

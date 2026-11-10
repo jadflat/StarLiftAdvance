@@ -449,6 +449,14 @@ static void present() {
     gba_dbgN++; gba_idleUs = 0; s_lastFlush = now;
 }
 
+// a frame the game does not draw (a stage is loading): the picture, its layers and sprites stay as they are; counted for the tests
+void gba_holdFrame() {
+    const uint32_t now = micros();
+    gba_dbgPeriod[gba_dbgN & 127] = now - s_lastFlush;
+    gba_dbgIdle[gba_dbgN & 127] = gba_idleUs;
+    gba_dbgN++; gba_idleUs = 0; s_lastFlush = now;
+}
+
 void gfx_flushRectAsync(int, int, int, int) { present(); }
 void gfx_flushRect(int, int, int, int)      { present(); waitFlip(); }
 void gfx_flush(void)      { present(); waitFlip(); }
