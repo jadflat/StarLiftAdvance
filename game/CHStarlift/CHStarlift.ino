@@ -435,13 +435,9 @@ static void placeLanderOnPad(int padX) {
     if (onPad == 2) facing = (int8_t)-facing;
 }
 
-static void genStage() {
-#ifdef CHGBA
-    hgtGen++;
-#endif
-    planet = stage & 7; hz = HZ[planet];
-    sector = stage >> 3;
-    baseRight = ((stage + sector) & 1) == 0;
+// the ground's heights (GBA: a frame of its own, before genStage: the one start-up frame that ran over 33 ms)
+static void genTerrain() {
+    const int planet = stage & 7, sector = stage >> 3;
     const uint32_t s = (uint32_t)stage * 977u + 13u;
     const int rough = 10 + planet * 3 + sector * 6;
     for (int i = 0; i < HN; i++) {
@@ -451,6 +447,20 @@ static void genStage() {
         if (pk > 170) h -= (pk - 170) * (26 + planet * 3) / 85;                // ridges to climb over
         hgt[i] = (uint8_t)clampi(h, 46 + WDY, 122 + WDY);
     }
+}
+
+static void genStage() {
+#ifdef CHGBA
+    hgtGen++;
+#endif
+    planet = stage & 7; hz = HZ[planet];
+    sector = stage >> 3;
+    baseRight = ((stage + sector) & 1) == 0;
+    const uint32_t s = (uint32_t)stage * 977u + 13u;
+    const int rough = 10 + planet * 3 + sector * 6;
+#ifndef CHGBA
+    genTerrain();
+#endif
     // the pads: the start at one end, the base (pad and building) at the other
     if (baseRight) { startPadX = 30; basePadX = W - 116; buildX = W - 54; doorX = buildX + BASE_DOOR[PLR.base]; }
     else { startPadX = W - 70; basePadX = 76; buildX = 10; doorX = buildX + 43 - BASE_DOOR[PLR.base]; }
@@ -2958,11 +2968,11 @@ void loop() {
     if (!card::ok()) { if ((frameNo % 60) == 2) card::open(); }
     else if (loadReq == 3) {                                      // (each part in a frame of its own, none drawn)
 #ifdef CHGBA
-      static bool cardGot;                                        // (the card's copy in one frame, genStage in the next)
-      if (cardGot) { cardGot = false; genStage(); if (state == TITLE) cam = 200; loadReq = 2; }
+      static uint8_t cardGot;                                     // (the card's copy in one frame, the ground's heights in the next, genStage in the third)
+      if (cardGot) { cardGot = 0; genStage(); if (state == TITLE) cam = 200; loadReq = 2; }
       else if (card::copy((uint8_t *)&PLR, CARD_PLANET + (uint32_t)(stage & 7) * PLANET_LEN, PLANET_LEN)
         && card::copy((uint8_t *)&PK, CARD_PACK + (uint32_t)(stage & 15) * sizeof(Pack), sizeof(Pack))) {
-        cardGot = true;
+        cardGot = 1; genTerrain();
         {   // the card's colours are in the CHGame order, where 0 is C_INK and 2 C_SKY0: Game.h swaps those two here
             auto fix = [](uint8_t &c) { if (c == 0) c = C_INK; else if (c == 2) c = C_SKY0; };
             fix(PLR.crack); fix(PLR.shopc); fix(PLR.basec);                  // (clouds: 0 is none, and never 2)
