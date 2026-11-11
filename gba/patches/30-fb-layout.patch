@@ -553,3 +553,17 @@ static uint8_t hudCache[FB_ROWS_BYTES(TOP)] __attribute__((aligned(4), section("
 =======
     FB_ROWS_SAVE(hudCache, TOP);
 >>>>>>>
+
+@@ sketch.cpp
+<<<<<<<
+        memcpy(gfx_fb, hudCache, sizeof hudCache);  // (part)
+=======
+        FB_ROWS_LOAD(hudCache, TOP);
+>>>>>>>
+
+@@ sketch.cpp
+<<<<<<<
+        memcpy(hudCache, gfx_fb, sizeof hudCache);  // (part)
+=======
+        FB_ROWS_SAVE(hudCache, TOP);
+>>>>>>>

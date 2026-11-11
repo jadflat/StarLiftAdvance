@@ -2337,30 +2337,61 @@ static void drawHud() {
     for (int i = 0; i < 3; i++) if (k[i] != hudKey[i]) same = false;
     if (same) memcpy(gfx_fb, hudCache, sizeof hudCache);
     else {
+    char q[8], g[12], s[12];
+    fmt(q, "", nSaved, "/", quota);
+    fmt(g, "STG ", stage + 1);
+    fmt(s, "", score);
+    const int qw = text35Width(q), gw = text35Width(g), sw = text35Width(s), hw = shMax() * 4 - 1;
+    const int gap = (SW - 3 - 82 - qw - 46 - hw - gw - sw) / 5;          // six blocks spread with equal gaps between them
+    const int xq = 2 + 82 + gap, xs = xq + qw + gap, xh = xs + 46 + gap, xg = xh + hw + gap;
+    // the layout's key: when only a value moved (the common case: a score, a seat, the fuel), the cache is loaded and just
+    // that block is cleared and redrawn; the same pixels as the whole, drawn again
+    const uint32_t lay = (uint32_t)qw | (uint32_t)gw << 6 | (uint32_t)sw << 12 | (uint32_t)shMax() << 18 | (uint32_t)stage << 22 | (uint32_t)hgtGen << 26;
+    static uint32_t hudLay; static bool hudOk;
+    const bool part = hudOk && lay == hudLay && k[1] >> 16 == hudKey[1] >> 16;
+    hudLay = lay;
+    if (part) {
+        memcpy(gfx_fb, hudCache, sizeof hudCache);  // (part)
+        if (k[0] != hudKey[0]) {
+            const bool fq = (k[0] & 0xFFF) != (hudKey[0] & 0xFFF), qc = k[0] >> 12 != hudKey[0] >> 12;
+            if (fq) { R(20, 1, 64, 6, C_STEEL); R(21, 2, fw0, 4, fuel < FUEL_MAX / 3 ? ((frameNo & 8) ? C_RED : C_GOLD) : C_GOLD); }
+            if (qc) { R(xq, 1, qw, 6, C_INK); text35(xq, 1, q, nSaved >= quota ? C_GREEN : C_GOLD); }
+        }
+        if ((k[1] & 0xFFFF) != (hudKey[1] & 0xFFFF)) {
+            if ((k[1] & 0xFF) != (hudKey[1] & 0xFF)) {
+                R(xs, 1, 46, 6, C_INK);
+                for (int i = 0; i < SEATS; i++) {
+                    const uint8_t c = i < seats ? C_WHITE : C_STEEL;
+                    R(xs + i * 6, 1, 4, 6, c); pset(xs + 1 + i * 6, 2, i < seats ? C_GOLD : C_INK); pset(xs + 2 + i * 6, 2, i < seats ? C_GOLD : C_INK);
+                }
+            }
+            if ((k[1] >> 8 & 0xFF) != (hudKey[1] >> 8 & 0xFF)) {
+                R(xh, 1, hw, 6, C_INK);
+                for (int i = 0; i < shMax(); i++) R(xh + i * 4, 1, 3, 6, i < shield ? C_GREEN : C_STEEL);
+            }
+        }
+        if (k[2] != hudKey[2]) { R(SW - 1 - sw, 1, sw, 6, C_INK); text35(SW - 1 - sw, 1, s, C_WHITE); }
+        memcpy(hudCache, gfx_fb, sizeof hudCache);  // (part)
+        for (int i = 0; i < 3; i++) hudKey[i] = k[i];
+    } else {
+    hudOk = true;
     R(0, 0, SW, TOP, C_INK);
     {   // StarLift Advance: the top row spread across 240: fuel, colonists, seats, shield, stage, score
-        char q[8], g[12], s[12];
-        fmt(q, "", nSaved, "/", quota);
-        fmt(g, "STG ", stage + 1);
-        fmt(s, "", score);
-        const int qw = text35Width(q), gw = text35Width(g), sw = text35Width(s), hw = shMax() * 4 - 1;
-        const int gap = (SW - 3 - 82 - qw - 46 - hw - gw - sw) / 5;      // six blocks spread with equal gaps between them
-        int x = 2 + 82 + gap;
+        int x = xq;
         text35(2, 1, "FUEL", C_SILVER);
         R(20, 1, 64, 6, C_STEEL);
         const int fw = fuel * 62 / FUEL_MAX;
         R(21, 2, fw, 4, fuel < FUEL_MAX / 3 ? ((frameNo & 8) ? C_RED : C_GOLD) : C_GOLD);
         text35(x, 1, q, nSaved >= quota ? C_GREEN : C_GOLD);
-        x += qw + gap;
+        x = xs;
         for (int i = 0; i < SEATS; i++) {                               // a seat each: the figure lit when taken
             const uint8_t c = i < seats ? C_WHITE : C_STEEL;
             R(x + i * 6, 1, 4, 6, c); pset(x + 1 + i * 6, 2, i < seats ? C_GOLD : C_INK); pset(x + 2 + i * 6, 2, i < seats ? C_GOLD : C_INK);
         }
-        x += 46 + gap;
+        x = xh;
         for (int i = 0; i < shMax(); i++) R(x + i * 4, 1, 3, 6, i < shield ? C_GREEN : C_STEEL);
-        x += hw + gap;
-        text35(x, 1, g, C_SILVER);
-        text35(SW - 1 - text35Width(s), 1, s, C_WHITE);
+        text35(xg, 1, g, C_SILVER);
+        text35(SW - 1 - sw, 1, s, C_WHITE);
     }
 #else
     R(0, 0, SW, TOP, C_INK);
@@ -2396,6 +2427,7 @@ static void drawHud() {
     }
     memcpy(hudCache, gfx_fb, sizeof hudCache);
     for (int i = 0; i < 3; i++) hudKey[i] = k[i];
+    }
     }
 #else
     for (int i = 0; i < RW; i++) { const int a = i * W / RW, b = a + W / RW / 2, m = hgt[a / 4] < hgt[b / 4] ? hgt[a / 4] : hgt[b / 4]; pset(4 + i, ry(m), C_GNDD); }   // the ground line
