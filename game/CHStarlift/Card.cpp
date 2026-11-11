@@ -18,7 +18,7 @@ static uint16_t tag[ALL] = { 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xf
 static uint8_t age[ALL], tick;                    // the least recently used slot is the one to replace
 static uint8_t used[ALL], frameNo;               // the frame each slot was last used in
 static uint8_t misses;                            // blocks read from the card this frame
-bool lowPri;                                      // scenery: it may wait a frame rather than read more than two blocks
+bool lowPri;                                      // scenery: it may wait a frame rather than read after another block
 static uint8_t *slotBuf(uint8_t i) { return i < SLOTS ? buf[i] : gfx_chunkScratch(); }
 static fat::Run runs[4];
 static uint8_t nRuns;
@@ -118,7 +118,7 @@ const uint8_t *at(uint32_t off) {
     uint8_t v = SLOTS;
     for (uint8_t i = 0; i < SLOTS; i++)
         if (used[i] != frameNo && (v == SLOTS || (uint8_t)(tick - age[i]) > (uint8_t)(tick - age[v]))) v = i;
-    if (lowPri && misses >= 2) return nullptr;    // the scenery can show up a frame later; a frame cannot be late
+    if (lowPri && misses >= 1) return nullptr;    // the scenery can show up a frame later; a frame cannot be late
     misses++;
 #ifdef SL_TRACE
     fprintf(stderr, "miss f%u b%u lp%d\n", (unsigned)frameNo, (unsigned)blk, (int)lowPri);

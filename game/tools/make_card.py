@@ -113,7 +113,11 @@ for w in WORLDS:
 # the game's words (tools/messages.txt): a table of 2-byte offsets, then the texts, none across a block
 MSGS = [l.rstrip('\n').split('\t', 1) for l in open(os.path.join(HERE, 'messages.txt')) if l.strip() and not l.startswith('#')]
 msg = bytearray(2 * len(MSGS))
-for k, (name, t) in enumerate(MSGS):
+# the quest lines (drawn every frame of a stage) go first, in the table's own block: a frame then reads that one block for them
+HOT = ('GET THE ', 'HOVER OVER IT', 'LAND ON IT, FLY')
+order = [k for k, m in enumerate(MSGS) if m[1].startswith(HOT)] + [k for k, m in enumerate(MSGS) if not m[1].startswith(HOT)]
+for k in order:
+    name, t = MSGS[k]
     b = t.encode('ascii') + bytes(1)
     if (len(msg) % 512) + len(b) > 512:
         msg += bytes(512 - len(msg) % 512)
