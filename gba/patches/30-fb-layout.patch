@@ -83,12 +83,17 @@ static inline void gfx__fillRow(int y, unsigned b) {
     for (int g = 0; g < 30; g++, w += 160) *w = v;
 }
 #define FB_FILL_ROW(y, b)  gfx__fillRow((y), (b))
+/* DMA 3, n words (the CPU waits for it). */
+static inline void gfx__dma3(void *d, const void *s, unsigned n) {
+    volatile uint32_t *r = (volatile uint32_t *)0x040000D4;
+    r[0] = (uint32_t)(uintptr_t)s; r[1] = (uint32_t)(uintptr_t)d; r[2] = n | 0x84000000u;
+}
 /* The top n rows into / out of a cache of FB_ROWS_BYTES(n) bytes (4-aligned). */
 static inline void gfx__rowsSave(uint32_t *c, int n) {
-    for (int g = 0; g < 30; g++) { const uint32_t *s = (const uint32_t *)gfx_fb + g * 160; for (int y = 0; y < n; y++) *c++ = s[y]; }
+    for (int g = 0; g < 30; g++, c += n) gfx__dma3(c, (const uint32_t *)gfx_fb + g * 160, n);
 }
 static inline void gfx__rowsLoad(const uint32_t *c, int n) {
-    for (int g = 0; g < 30; g++) { uint32_t *d = (uint32_t *)gfx_fb + g * 160; for (int y = 0; y < n; y++) d[y] = *c++; }
+    for (int g = 0; g < 30; g++, c += n) gfx__dma3((uint32_t *)gfx_fb + g * 160, c, n);
 }
 #define FB_ROWS_SAVE(c, n) gfx__rowsSave((uint32_t *)(c), (n))
 #define FB_ROWS_LOAD(c, n) gfx__rowsLoad((const uint32_t *)(c), (n))
