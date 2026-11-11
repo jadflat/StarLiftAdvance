@@ -97,6 +97,11 @@ static inline void gfx__rowsLoad(const uint32_t *c, int n) {
 }
 #define FB_ROWS_SAVE(c, n) gfx__rowsSave((uint32_t *)(c), (n))
 #define FB_ROWS_LOAD(c, n) gfx__rowsLoad((const uint32_t *)(c), (n))
+/* The top r rows only, into a cache of n rows. */
+static inline void gfx__rowsSavePart(uint32_t *c, int n, int r) {
+    for (int g = 0; g < 30; g++, c += n) gfx__dma3(c, (const uint32_t *)gfx_fb + g * 160, r);
+}
+#define FB_ROWS_SAVE_PART(c, n, r) gfx__rowsSavePart((uint32_t *)(c), (n), (r))
 >>>>>>>
 
 @@ lib/CHGfx/CHGfx_internal.h
@@ -552,6 +557,20 @@ static uint8_t hudCache[FB_ROWS_BYTES(TOP)] __attribute__((aligned(4), section("
     memcpy(hudCache, gfx_fb, sizeof hudCache);
 =======
     FB_ROWS_SAVE(hudCache, TOP);
+>>>>>>>
+
+@@ sketch.cpp
+<<<<<<<
+        memcpy(gfx_fb, hudCache, sizeof hudCache);  // (flow)
+=======
+        FB_ROWS_LOAD(hudCache, TOP);
+>>>>>>>
+
+@@ sketch.cpp
+<<<<<<<
+    if (flow) memcpy(hudCache, gfx_fb, 8 * GFX_FB_STRIDE);  // (flow: the rows that changed)
+=======
+    if (flow) FB_ROWS_SAVE_PART(hudCache, TOP, 8);
 >>>>>>>
 
 @@ sketch.cpp

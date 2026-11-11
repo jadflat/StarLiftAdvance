@@ -48,6 +48,7 @@ local DIAG = {{ {diag} }}
 local function dg() local t = ""; for _, d in ipairs(DIAG) do local v = d[3] == 1 and emu:read8(d[2]) or d[3] == 2 and emu:read16(d[2]) or emu:read32(d[2]); t = t .. " " .. d[1] .. "=" .. v end; return t end
 local CONV = {a("gba_convUs")}
 local STL = {a("gba_dbgStall")}
+local RING = {a(os.environ.get("FR_RING", "-"))}   -- env FR_RING: a per-frame ring of 128 words (as gba_dbgStall), printed on the OVER lines
 local stSum, stN, stOver, stOverN = 0, 0, 0, 0
 local shotAt, shotName = nil, 0
 local PSUM, PFR, BST = {a("gba_profSum")}, {a("gba_profFrames")}, {a("gba_blitStat")}
@@ -88,7 +89,7 @@ local function body()
     pseen = pn
   end
   local pcur, pdel = {{}}, {{}}
-  if PROF == 1 and PSUM > 0 then for i = 0, 11 do pcur[i] = emu:read32(PSUM + 4 * i); pdel[i] = pcur[i] - (pprev[i] or 0); pprev[i] = pcur[i] end end
+  if PROF == 1 and PSUM > 0 then for i = 0, 11 do pcur[i] = emu:read32(PSUM + 4 * i); pdel[i] = pcur[i] - (pprev[i] or 0) end end   -- since the last game frame seen (a frame spans 2-3 emulator frames)
   for k = seen, n - 1 do
     if pf then pf:write("F " .. k .. " " .. (emu:read32(P + (k % 128) * 4) - emu:read32(I + (k % 128) * 4)) .. " " .. fr .. {NL}) end
     local p = emu:read32(P + (k % 128) * 4)
@@ -98,7 +99,7 @@ local function body()
       if STL > 0 then local st = emu:read32(STL + (k % 128) * 4); stSum = stSum + st; if st > 500 then stN = stN + 1 end; if b > 33333 then stOver = stOver + st; if st > 500 then stOverN = stOverN + 1 end end end
       if b > worst then worst = b; worstAt = k end
       if b > {os.environ.get("FR_THRESH","33333")} then over = over + 1; overList = overList .. " " .. k .. ":" .. math.floor(b / 100) / 10
-        if PROF == 1 and n - seen == 1 then local t = ""; for i = 0, 11 do t = t .. " " .. i .. ":" .. (pdel[i] or 0) end; f:write("OVER " .. k .. " " .. math.floor(b / 100) / 10 .. " ms, prof us:" .. t .. " |" .. dg() .. {NL}) end end
+        if PROF == 1 and n - seen == 1 then local t = ""; for i = 0, 11 do t = t .. " " .. i .. ":" .. (pdel[i] or 0) end; if RING > 0 then t = t .. " ring=" .. emu:read32(RING + (k % 128) * 4) end; f:write("OVER " .. k .. " " .. math.floor(b / 100) / 10 .. " ms, prof us:" .. t .. " |" .. dg() .. {NL}) end end
       local h = math.floor(b / 2000); hist[h] = (hist[h] or 0) + 1
       cs = cs + p; cb = cb + b; cn = cn + 1; if b > cm then cm = b end
       if k % 250 == 0 then
@@ -107,7 +108,7 @@ local function body()
       end
     end
   end
-  if n > seen then seen = n end
+  if n > seen then seen = n; for i = 0, 11 do pprev[i] = pcur[i] end end
   if n > {frames} then
     f:write("DIAGEND" .. dg() .. {NL})
     f:write("BCPOOL resets " .. emu:read32({a("gba_bcResets")}) .. " ents " .. emu:read32({a("gba_bcN")}) .. " used " .. emu:read32({a("gba_bcUsed")}) .. {NL})

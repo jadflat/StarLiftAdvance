@@ -531,23 +531,48 @@ static void genStage() {
 }
 
 // ---- effects ------------------------------------------------------------------------------------------------------
-static NOINL void part(int x, int y, int vx, int vy, uint8_t life, uint8_t col) {          // x, y px; vx, vy 1/16 px a frame
-    for (auto &q : pt) if (!q.life) { q = { (int16_t)(x * 16), (int16_t)(y * 16), (int8_t)vx, (int8_t)vy, life, col }; return; }
+// (a spray of them: each spark's search for a free slot starts after the one before it; the same slots as searching from the first)
+static NOINL int partFrom(int c, int x, int y, int vx, int vy, uint8_t life, uint8_t col) {   // x, y px; vx, vy 1/16 px a frame
+    for (; c < PARTS; c++) if (!pt[c].life) { pt[c] = { (int16_t)(x * 16), (int16_t)(y * 16), (int8_t)vx, (int8_t)vy, life, col }; return c + 1; }
+    return c;
 }
+static NOINL void part(int x, int y, int vx, int vy, uint8_t life, uint8_t col) { partFrom(0, x, y, vx, vy, life, col); }
 // n sparks from (x, y), x speeds -sx/2..sx/2, y speeds -up..sy-up (1/16 px a frame), in two colours by turns
 static NOINL void burst(int x, int y, int n, int sx, int sy, int up, uint8_t life, uint8_t c1, uint8_t c2) {
-    for (int i = 0; i < n; i++) part(x, y, rnd(sx) - sx / 2, rnd(sy) - up, life, i & 1 ? c1 : c2);
+    for (int i = 0, c = 0; i < n; i++) c = partFrom(c, x, y, rnd(sx) - sx / 2, rnd(sy) - up, life, i & 1 ? c1 : c2);
 }
 static NOINL void blast(int x, int y, int r, int delay) {
     for (auto &b : booms) if (!b.t) { b = { (int16_t)x, (int16_t)y, 16, (uint8_t)r, (uint8_t)delay }; break; }
 }
 // an explosion: a fireball and its shock ring, sparks and debris thrown out, smoke rising after
-static void boom(int x, int y, int n, int r) {
+#ifdef CHGBA
+// (the GBA: ARM code with rnd's and partFrom's steps in line, in their order: a remainder by a constant is a multiply there, and
+// ~110 calls go)
+#define RK(n) (g ^= g << 13, g ^= g >> 17, g ^= g << 5, (int)(g % (uint32_t)(n)))
+#define PUT(X, Y, VX, VY, LIFE, COL) { while (c < PARTS && pt[c].life) c++; if (c < PARTS) { pt[c] = { (int16_t)((X) * 16), (int16_t)((Y) * 16), (int8_t)(VX), (int8_t)(VY), (uint8_t)(LIFE), (uint8_t)(COL) }; c++; } }
+__attribute__((target("arm"))) static void boom(int x, int y, int n, int r) {
     static const uint8_t COLS[4] = { C_GOLD, C_RED, C_WHITE, C_GOLD };
-    for (int i = 0; i < n; i++) part(x, y, rnd(56) - 28, rnd(56) - 36, (uint8_t)(12 + rnd(22)), COLS[rnd(4)]);
-    for (int i = 0; i < n / 3; i++) part(x + rnd(9) - 4, y + rnd(7) - 3, rnd(9) - 4, -4 - rnd(6), (uint8_t)(24 + rnd(24)), i & 1 ? C_STEEL : C_SILVER);   // smoke
+    uint32_t g = rng;
+    int c = 0;
+    for (int i = 0; i < n; i++) { const int vx = RK(56) - 28, vy = RK(56) - 36, life = 12 + RK(22); const int col = COLS[RK(4)]; PUT(x, y, vx, vy, life, col) }
+    for (int i = 0; i < n / 3; i++) {                                                                                     // smoke
+        const int dx = RK(9) - 4, dy = RK(7) - 3, vx = RK(9) - 4, vy = -4 - RK(6), life = 24 + RK(24);
+        PUT(x + dx, y + dy, vx, vy, life, i & 1 ? C_STEEL : C_SILVER)
+    }
+    rng = g;
     blast(x, y, r, 0);
 }
+#undef RK
+#undef PUT
+#else
+static void boom(int x, int y, int n, int r) {
+    static const uint8_t COLS[4] = { C_GOLD, C_RED, C_WHITE, C_GOLD };
+    int c = 0;
+    for (int i = 0; i < n; i++) c = partFrom(c, x, y, rnd(56) - 28, rnd(56) - 36, (uint8_t)(12 + rnd(22)), COLS[rnd(4)]);
+    for (int i = 0; i < n / 3; i++) c = partFrom(c, x + rnd(9) - 4, y + rnd(7) - 3, rnd(9) - 4, -4 - rnd(6), (uint8_t)(24 + rnd(24)), i & 1 ? C_STEEL : C_SILVER);   // smoke
+    blast(x, y, r, 0);
+}
+#endif
 static NOINL void say(uint8_t id, uint8_t t = 50, int num = -1) { banner = id; bannerT = t; bannerNum = (int8_t)num; bannerNew = 1; }
 static NOINL void sfxSay(uint8_t snd, uint8_t id, uint8_t t = 50, int num = -1) { sfx(snd); say(id, t, num); }   // a sound with its call-out
 static bool hoverTick() { hov = true; if ((++hoverT & (hoverT > 36 ? 7 : 15)) == 1) sfx(S_WARN); return hoverT >= 54; }   // the bar fills, beeps quicken: true when the rope is down
@@ -2349,6 +2374,9 @@ static void drawHud() {
     const uint32_t lay = (uint32_t)qw | (uint32_t)gw << 6 | (uint32_t)sw << 12 | (uint32_t)shMax() << 18 | (uint32_t)stage << 22 | (uint32_t)hgtGen << 26;
     static uint32_t hudLay; static bool hudOk;
     const bool part = hudOk && lay == hudLay && k[1] >> 16 == hudKey[1] >> 16;
+    // a layout change with the same ground line (the score gained a digit: the six blocks move): the cached rows are loaded and only
+    // the text rows (0..7) are cleared and redrawn; the scanner's frame and the ground line below are the same pixels
+    const bool flow = hudOk && !part && k[1] >> 16 == hudKey[1] >> 16;
     hudLay = lay;
     if (part) {
         memcpy(gfx_fb, hudCache, sizeof hudCache);  // (part)
@@ -2375,13 +2403,19 @@ static void drawHud() {
         for (int i = 0; i < 3; i++) hudKey[i] = k[i];
     } else {
     hudOk = true;
-    R(0, 0, SW, TOP, C_INK);
+    if (flow) {
+        memcpy(gfx_fb, hudCache, sizeof hudCache);  // (flow)
+        R(84, 0, SW - 84, 8, C_INK);
+    }   // (the fuel block, left of 84, stays unless the fuel moved)
+    else R(0, 0, SW, TOP, C_INK);
     {   // StarLift Advance: the top row spread across 240: fuel, colonists, seats, shield, stage, score
         int x = xq;
-        text35(2, 1, "FUEL", C_SILVER);
-        R(20, 1, 64, 6, C_STEEL);
-        const int fw = fuel * 62 / FUEL_MAX;
-        R(21, 2, fw, 4, fuel < FUEL_MAX / 3 ? ((frameNo & 8) ? C_RED : C_GOLD) : C_GOLD);
+        if (!flow) text35(2, 1, "FUEL", C_SILVER);
+        if (!flow || (k[0] & 0xFFF) != (hudKey[0] & 0xFFF)) {
+            R(20, 1, 64, 6, C_STEEL);
+            const int fw = fuel * 62 / FUEL_MAX;
+            R(21, 2, fw, 4, fuel < FUEL_MAX / 3 ? ((frameNo & 8) ? C_RED : C_GOLD) : C_GOLD);
+        }
         text35(x, 1, q, nSaved >= quota ? C_GREEN : C_GOLD);
         x = xs;
         for (int i = 0; i < SEATS; i++) {                               // a seat each: the figure lit when taken
@@ -2411,9 +2445,12 @@ static void drawHud() {
     text35(SW - 1 - text35Width(s), 1, s, C_WHITE);
 #endif
     // the scanner: the whole stage across the screen, as tall as the HUD (RH rows from row 9)
+#ifdef CHGBA
+    if (!flow)
+#endif
     R(3, 8, RW + 2, 1, C_STEEL);
 #ifdef CHGBA
-    {   // GBA: the ground line's rows kept from stage to stage (no divide on the ARM7: 3 a pixel cost ~3 ms), drawn straight into the frame
+    if (!flow) {   // GBA: the ground line's rows kept from stage to stage (no divide on the ARM7: 3 a pixel cost ~3 ms), drawn straight into the frame
         static uint8_t line[RW], gen;
         if (gen != hgtGen) {
             gen = hgtGen;
@@ -2425,6 +2462,8 @@ static void drawHud() {
             *q = (x & 1) ? (uint8_t)((*q & 0x0F) | (C_GNDD << 4)) : (uint8_t)((*q & 0xF0) | C_GNDD);
         }
     }
+    if (flow) memcpy(hudCache, gfx_fb, 8 * GFX_FB_STRIDE);  // (flow: the rows that changed)
+    else
     memcpy(hudCache, gfx_fb, sizeof hudCache);
     for (int i = 0; i < 3; i++) hudKey[i] = k[i];
     }
