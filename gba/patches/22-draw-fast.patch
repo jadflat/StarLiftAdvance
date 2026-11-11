@@ -28,3 +28,16 @@ void gfx_fillCircle(int cx, int cy, int r, uint8_t c) {
     }
     int x = 0, y = r, d = 3 - 2 * r;
 >>>>>>>
+
+# cloudBank: the row widths' division by hh*hh+1 (hh 3..6, so 10, 17, 26, 37; the numerator is at most 31 * 36) as a
+# multiply by a 16-bit reciprocal (ceil(65536 / d)), checked for every numerator 0..2048.
+@@ sketch.cpp
+<<<<<<<
+#pragma clang loop unroll(disable)
+    for (int r = 0; r <= hh; r++) qd[r] = (hw * r * r) / (hh * hh + 1);
+=======
+    static const uint16_t recip[4] = { 6554, 3856, 2521, 1772 };   // GBA: patch 22-draw-fast
+    const uint32_t rc = recip[hh - 3];
+#pragma clang loop unroll(disable)
+    for (int r = 0; r <= hh; r++) qd[r] = (int)(((uint32_t)(hw * r * r) * rc) >> 16);
+>>>>>>>
