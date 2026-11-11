@@ -38,7 +38,7 @@ static inline __attribute__((always_inline, target("arm"))) void blrDone(Rd &rd,
 // The same pixels as the run loop below, which still draws whatever is clipped (gba_clipY, a clip rectangle).
 // Nothing ever goes stale (pictures are in ROM, the colours are part of the key); a full pool is emptied and refilled.
 struct BcEnt { uint32_t src, lut[4]; uint16_t w, h, next; uint8_t flip, nw; uint32_t *data; };
-enum { BC_POOL = 24 * 1024, BC_ENTS = 384 };                                    // words (96 KB), pictures
+enum { BC_POOL = 32 * 1024, BC_ENTS = 384 };                                    // words (128 KB), pictures
 static uint32_t gba_bcPool[BC_POOL] __attribute__((section(".ewram")));
 static BcEnt gba_bcEnt[BC_ENTS] __attribute__((section(".ewram")));
 static uint16_t gba_bcHead[256] __attribute__((section(".ewram")));             // per bucket: an entry + 1 (0: none)
@@ -53,8 +53,8 @@ static bool bcFill(BcEnt &e, const uint8_t *&p, int &r, uint32_t deadline) {
     const int w = e.w, h = e.h, nw = e.nw;
     const bool flip = e.flip;
     const uint8_t *lut = (const uint8_t *)e.lut;
-    uint32_t *d = e.data + (uint32_t)r * 2 * nw;
-    for (; r < h; r++, d += 2 * nw) {                                            // a row: nw words of colour, nw of mask
+    uint32_t *const d0 = e.data;                                                 // column g (8 pixels wide): h words of colour at g*2h, h of mask after
+    for (; r < h; r++) {
         if ((int32_t)(micros() - deadline) > 0) return false;
         for (int c = 0; c < w;) {
             const uint8_t b = *p++;
@@ -63,8 +63,9 @@ static bool bcFill(BcEnt &e, const uint8_t *&p, int &r, uint32_t deadline) {
                 for (int k = 0; k < n; k++) {
                     const int X = flip ? w - 1 - (c + k) : c + k;                // (flipped: as the run loop's x + w - c - n)
                     if ((unsigned)X >= (unsigned)w) continue;
-                    d[X >> 3] |= (uint32_t)(lut[v] & 15) << ((X & 7) * 4);
-                    d[nw + (X >> 3)] |= 15u << ((X & 7) * 4);
+                    uint32_t *const d = d0 + (uint32_t)((X >> 3) + 1) * 2 * h + r;
+                    d[0] |= (uint32_t)(lut[v] & 15) << ((X & 7) * 4);
+                    d[h] |= 15u << ((X & 7) * 4);
                 }
             c += n;
         }
@@ -85,7 +86,7 @@ __attribute__((noinline)) static BcEnt *bcMake(const uint8_t *p, uint32_t src, c
     if (gba_bcSpent > lim || gba_bcPend.e) { gba_over = 1; gba_bcSkip = 1; return nullptr; }  // (patch 20: ~1.5 ms of decoding a frame in play, 4 ms while warming up; over it the sprite is left out, a big one is finished over the next frames)
     const uint32_t t0 = micros();
     const int nw = (w + 7) >> 3;
-    const uint32_t need = 2u * (uint32_t)nw * (uint32_t)h;
+    const uint32_t need = 2u * (uint32_t)(nw + 2) * (uint32_t)h;                // (a zero column each side: every output column has both its words)
     if (need > BC_POOL) return nullptr;
     if (gba_bcUsed + need > BC_POOL || gba_bcN == BC_ENTS) {
         memset(gba_bcHead, 0, sizeof gba_bcHead); gba_bcUsed = gba_bcN = 0; gba_bcResets++;
@@ -121,76 +122,68 @@ static inline __attribute__((always_inline)) const BcEnt *bcGet(const Rd &rd, in
     return e;
 }
 
+// the same with the clip: only the pixel columns still open at each row
+__attribute__((noinline)) static void bcClipCol(uint32_t *q, const uint32_t *A, const uint32_t *P, int hh, int s, int rs, int r, int rEnd, int y, const uint8_t *c) {
+    for (; r < rEnd; r++, q++) {
+        uint32_t cd, cm;
+        asm("mov %0, %1, lsr %2" : "=r"(cd) : "r"(P[r]), "r"(rs)); asm("mov %0, %1, lsr %2" : "=r"(cm) : "r"(P[hh + r]), "r"(rs));
+        const uint32_t vd = (A[r] << s) | cd, vm0 = (A[hh + r] << s) | cm;
+        uint32_t vm = vm0;
+        if (!vm) continue;
+        const int yy = y + r;
+        uint32_t open = 0;
+        for (int j = 0; j < 8; j++) if (yy < c[j]) open |= 15u << (j * 4);
+        vm &= open;
+        if (vm) *q = (*q & ~vm) | (vd & vm);
+    }
+}
+
+__attribute__((noinline)) static void bcClipRange(const uint8_t *clip, int wx, int nw, uint8_t *gmin, uint8_t *gmax) {
+    for (int i = 0; i <= nw; i++) {
+        const unsigned k = (unsigned)(wx + i);
+        uint8_t lo = 255, hi = 0;
+        if (k < (unsigned)(FB_NGROUPS)) for (int j = 0; j < 8; j++) { const uint8_t v = clip[k * 8 + j]; if (v < lo) lo = v; if (v > hi) hi = v; }
+        gmin[i] = lo; gmax[i] = hi;
+    }
+}
 // draw rd's picture from the pool (decoding it first if new); false: not possible (no card data), use the run loop
 __attribute__((section(".iwram.text.bc"), noinline, target("arm")))
 static bool bcBlit(const Rd &rd, int w, int h, int x, int y, bool flip, const uint32_t *lut4) {
     const BcEnt *e = bcGet(rd, w, h, flip, lut4);
     if (!e) return gba_bcSkip;
-    const int nw = e->nw, s = (x & 7) * 4, wx = x >> 3;
-    int r = y < 0 ? -y : 0, r1 = h;
+    const int nw = e->nw, s = (x & 7) * 4, wx = x >> 3, hh = e->h, rs = 32 - s;
+    const int r0 = y < 0 ? -y : 0;
+    int r1 = hh;
     if (y + r1 > SH) r1 = SH - y;
-    const uint32_t *row = e->data + r * 2 * nw;
-    uint32_t *dst = FB_WORDS + FB_WY(y + r);
     const uint8_t *const clip = gba_clipY;                                       // (patch 04: behind a hills layer)
-    uint8_t gmin[24], gmax[24];                                                  // per 8 columns: the clip's lowest and highest row
     const bool fastClip = clip && nw + 1 <= 24;
-    if (fastClip)
-        for (int i = 0; i <= nw; i++) {
-            const unsigned k = (unsigned)(wx + i);
-            uint8_t lo = 255, hi = 0;
-            if (k < (unsigned)(FB_NGROUPS)) for (int j = 0; j < 8; j++) { const uint8_t v = clip[k * 8 + j]; if (v < lo) lo = v; if (v > hi) hi = v; }
-            gmin[i] = lo; gmax[i] = hi;
+    uint8_t gmin[24], gmax[24];                                                  // per 8 columns: the clip's lowest and highest row
+    if (fastClip) bcClipRange(clip, wx, nw, gmin, gmax);
+    // column-major like the framebuffer: per 8-pixel column of the screen, down the rows, words at stride 1 on both sides;
+    // each word is the picture's column i shifted left with the carry of column i-1 (a shift by 32 gives 0 on ARM)
+    int i0 = wx < 0 ? -wx : 0, i1 = FB_NGROUPS - wx;
+    if (i1 > nw + (s ? 1 : 0)) i1 = nw + (s ? 1 : 0);
+    for (int i = i0; i < i1; i++) {
+        const uint32_t *P = e->data + i * 2 * hh, *A = P + 2 * hh;
+        uint32_t *q = FB_WORDS + FB_GX(wx + i) + FB_WY(y + r0);
+        int rb = r1, lowC = 9999;                                                // rows above lowC are all open in this column
+        if (clip) {
+            if (fastClip) { lowC = gmin[i]; if (y + rb > gmax[i]) rb = gmax[i] - y; }
+            else lowC = -1;
         }
-    // (rows above every clip, or no clip: a tight loop over the words on screen; each word's carry from the one before)
-    int lowAll = clip ? (fastClip ? 255 : -1) : 9999, i0 = wx < 0 ? -wx : 0, i1 = FB_NGROUPS - wx;
-    if (i1 > nw + 1) i1 = nw + 1;
-    if (fastClip) for (int i = i0; i < i1; i++) if (gmin[i] < lowAll) lowAll = gmin[i];
-#pragma clang loop unroll(disable)
-    for (; r < r1; r++, row += 2 * nw, dst += FB_STEP_WY) {
-        if (y + r < lowAll) {
-            uint32_t pd = i0 ? row[i0 - 1] : 0, pm = i0 ? row[nw + i0 - 1] : 0;
-            const int rs = 32 - s;
-#pragma clang loop unroll(disable)
-            for (int i = i0; i < i1; i++) {
-                uint32_t a = 0, m = 0, cd, cm;
-                if (i < nw) { a = row[i]; m = row[nw + i]; }
-                asm("mov %0, %1, lsr %2" : "=r"(cm) : "r"(pm), "r"(rs));      // (ARM: a shift by 32 gives 0)
-                const uint32_t vm = (m << s) | cm;
-                if (vm) {
-                    asm("mov %0, %1, lsr %2" : "=r"(cd) : "r"(pd), "r"(rs));
-                    const uint32_t vd = (a << s) | cd;
-                    uint32_t *const q = dst + FB_GX(wx + i);
-                    *q = vm == ~0u ? vd : (*q & ~vm) | (vd & vm);
-                }
-                pd = a; pm = m;
+        int rr = r0;
+        const int rOpen = lowC - y < rb ? lowC - y : rb;                        // [r0, rOpen): no clip to test
+        for (; rr < rOpen; rr++, q++) {
+            uint32_t cm, cd;
+            asm("mov %0, %1, lsr %2" : "=r"(cm) : "r"(P[hh + rr]), "r"(rs));  // (ARM: a shift by 32 gives 0)
+            const uint32_t m = (A[hh + rr] << s) | cm;
+            if (m) {
+                asm("mov %0, %1, lsr %2" : "=r"(cd) : "r"(P[rr]), "r"(rs));
+                const uint32_t vd = (A[rr] << s) | cd;
+                *q = m == ~0u ? vd : (*q & ~m) | (vd & m);
             }
-            continue;
         }
-        uint32_t cd = 0, cm = 0;
-#pragma clang loop unroll(disable)
-        for (int i = 0; i <= nw; i++) {
-            uint32_t vd = cd, vm = cm;
-            if (i < nw) {
-                const uint32_t a = row[i], m = row[nw + i];
-                vd |= a << s; vm |= m << s;
-                cd = s ? a >> (32 - s) : 0; cm = s ? m >> (32 - s) : 0;
-            }
-            const unsigned k = (unsigned)(wx + i);
-            if (!vm || k >= (unsigned)(FB_NGROUPS)) continue;
-            if (clip) {                                                          // only the columns still open at this row
-                const uint8_t *c = clip + k * 8;
-                const int yy = y + r;
-                if (fastClip && yy >= gmax[i]) continue;                         // all 8 columns closed
-                if (!fastClip || yy >= gmin[i]) {                                // (else all open)
-                    uint32_t open = 0;
-#pragma clang loop unroll(disable)
-                    for (int j = 0; j < 8; j++) if (yy < c[j]) open |= 15u << (j * 4);
-                    vm &= open;
-                    if (!vm) continue;
-                }
-            }
-            dst[FB_GX(k)] = (dst[FB_GX(k)] & ~vm) | (vd & vm);
-        }
+        if (rr < rb) bcClipCol(q, A, P, hh, s, rs, rr, rb, y, clip + (wx + i) * 8);
     }
     return true;
 }
@@ -218,10 +211,10 @@ static bool bcObj(const Rd &rd, int w, int h, int x, int y, bool flip, const uin
         for (int ty = 0; ty < th; ty++)
             for (int tx = 0; tx < tw; tx++) {
                 if (tx >= cw || ty * 8 >= h) { for (int k = 0; k < 8; k++) *t++ = 0; continue; }        // (outside the picture: clear)
-                const uint32_t *src = e->data + ty * 8 * 2 * nw + c0 + tx;
+                const uint32_t *src = e->data + (c0 + tx + 1) * 2 * e->h + ty * 8;
                 const int rows = h - ty * 8 < 8 ? h - ty * 8 : 8;
                 int k = 0;
-                for (; k < rows; k++, src += 2 * nw) *t++ = *src;
+                for (; k < rows; k++) *t++ = *src++;
                 for (; k < 8; k++) *t++ = 0;
             }
     }
