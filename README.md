@@ -3,7 +3,7 @@
 ![StarLift Advance](docs/starlift-advance.gif)
 
 STARLIFT, the lander-rescue game made for the CHGame handheld, redrawn for the whole Game Boy Advance screen:
-240x160, pixel for pixel, nothing stretched. Version **FS 0.8**, from the CHGame version 0.24 (merged in with its bosses,
+240x160, pixel for pixel, nothing stretched. Version **FS 0.66**, from the CHGame version 0.24 (merged in with its bosses,
 chrome title, cut-scenes and balance changes).
 
 The CHGame version (128x128) stays in its own repository; this one has its own copy of the game in `game/` and the GBA
@@ -47,6 +47,11 @@ Switches (environment): `GBA_CFLAGS="-DSL_START=n"` starts new games at stage n;
 code as Thumb; `GBA_SCENECHECK=1` draws the scenery and every picture both the game's way and the patched way each
 frame and counts differences (`gba/tools/frames.py` reports them).
 
+## Changelog
+
+**0.66** - 30 fps on every stage in mGBA: 0 frames over 33.3 ms on all 8 stages. The screen is drawn straight into video
+memory (no per-frame copy from EWRAM), and text, sprites and the HUD draw faster. Game version stays 0.48.
+
 ## Tested
 
 In mGBA (nightly), on a fixed 3000-frame scripted run (`gba/tools/frames.py`: title, stages, crashes, game over and back)
@@ -55,7 +60,7 @@ picture drawing with the patched versions (no difference in 12,000 scenery and 4
 ground layer with the picture's own ground pixel for pixel (no difference in 3000 frames, FS 0.3; the pebbles are new
 since).
 
-**Speed (FS 0.8, latest run, 3000 scripted frames from a fresh save):** the typical frame takes 21-26 ms of the 33.3 ms
+**Speed (older run, FS 0.8, 3000 scripted frames from a fresh save):** the typical frame takes 21-26 ms of the 33.3 ms
 budget, and 58 of 2998 frames went over (about 2%): the title (first frame 275 ms), the stage builds (about 225-260 ms), and
 short runs of 34-100 ms at explosions and scene cuts (frames 1031-1110, 2200-2260, 2673-2678). So it holds 30 fps in play;
 the hitches are the stage loads and the busiest explosions. Costs: a 240x160 picture is 2.3 times the board's pixels, held in
