@@ -30,6 +30,12 @@ outdir.mkdir(parents=True, exist_ok=True)
 sy = symbols(OUT / "STARLIFT.elf")
 a = lambda n: sy[n][0] if n in sy else 0
 NL = "string.char(10)"
+DIAG = "state timer loadReq gba_warmUp frameNo bannerT fqPic fqT gbaLod killT gba_bcSpent".split() + os.environ.get("FR_DIAG", "").split()   # printed on the OVER lines
+def dsym(n):
+    for c in (n, f"_ZL{len(n)}{n}"):
+        if c in sy: return sy[c]
+    return (0, 0)
+diag = ", ".join('{"%s", %d, %d}' % (n, dsym(n)[0], dsym(n)[1] or 4) for n in DIAG if dsym(n)[0])
 lua = f'''local out = "{outdir.as_posix()}/"
 local f = io.open(out .. "log.txt", "w")
 local N, P, I = {a("gba_dbgN")}, {a("gba_dbgPeriod")}, {a("gba_dbgIdle")}
@@ -38,6 +44,8 @@ local snaps = {{{",".join(map(str, snaps))}}}
 local si, seen, worst, worstAt, over, tot, hist, overList = 1, 1, 0, 0, 0, 0, {{}}, ""
 local cs, cb, cm, cn, finished, started = 0, 0, 0, 0, false, false
 local hooked = false
+local DIAG = {{ {diag} }}
+local function dg() local t = ""; for _, d in ipairs(DIAG) do local v = d[3] == 1 and emu:read8(d[2]) or d[3] == 2 and emu:read16(d[2]) or emu:read32(d[2]); t = t .. " " .. d[1] .. "=" .. v end; return t end
 local CONV = {a("gba_convUs")}
 local STL = {a("gba_dbgStall")}
 local stSum, stN, stOver, stOverN = 0, 0, 0, 0
@@ -90,7 +98,7 @@ local function body()
       if STL > 0 then local st = emu:read32(STL + (k % 128) * 4); stSum = stSum + st; if st > 500 then stN = stN + 1 end; if b > 33333 then stOver = stOver + st; if st > 500 then stOverN = stOverN + 1 end end end
       if b > worst then worst = b; worstAt = k end
       if b > {os.environ.get("FR_THRESH","33333")} then over = over + 1; overList = overList .. " " .. k .. ":" .. math.floor(b / 100) / 10
-        if PROF == 1 and n - seen == 1 then local t = ""; for i = 0, 11 do t = t .. " " .. i .. ":" .. (pdel[i] or 0) end; f:write("OVER " .. k .. " " .. math.floor(b / 100) / 10 .. " ms, prof us:" .. t .. {NL}) end end
+        if PROF == 1 and n - seen == 1 then local t = ""; for i = 0, 11 do t = t .. " " .. i .. ":" .. (pdel[i] or 0) end; f:write("OVER " .. k .. " " .. math.floor(b / 100) / 10 .. " ms, prof us:" .. t .. " |" .. dg() .. {NL}) end end
       local h = math.floor(b / 2000); hist[h] = (hist[h] or 0) + 1
       cs = cs + p; cb = cb + b; cn = cn + 1; if b > cm then cm = b end
       if k % 250 == 0 then
@@ -101,6 +109,7 @@ local function body()
   end
   if n > seen then seen = n end
   if n > {frames} then
+    f:write("DIAGEND" .. dg() .. {NL})
     f:write("BCPOOL resets " .. emu:read32({a("gba_bcResets")}) .. " ents " .. emu:read32({a("gba_bcN")}) .. " used " .. emu:read32({a("gba_bcUsed")}) .. {NL})
     f:write("WHOLE RUN: frames " .. tot .. ", worst " .. (worst / 1000) .. " ms (frame " .. worstAt .. "), over 33.3 ms: " .. over .. {NL})
     local t = "busy histogram (2 ms bins):"
