@@ -1,0 +1,30 @@
+# 22-draw-fast: filled circles as one span per row (the library draws each row's span about twice, from two octants).
+# The union of the library's spans is, per row offset dy, the widest half-width any call gave it; the same pixels.
+
+@@ ../lib/CHGfx/CHGfx_draw.cpp
+<<<<<<<
+void gfx_fillCircle(int cx, int cy, int r, uint8_t c) {
+    int x = 0, y = r, d = 3 - 2 * r;
+=======
+void gfx_fillCircle(int cx, int cy, int r, uint8_t c) {
+    if (r >= 0 && r < 48) {                                  // GBA: patch 22-draw-fast
+        int8_t hw[48];
+        for (int i = 0; i <= r; i++) hw[i] = -1;
+        int x = 0, y = r, d = 3 - 2 * r;
+        while (x <= y) {
+            if (hw[y] < x) hw[y] = (int8_t)x;
+            if (hw[x] < y) hw[x] = (int8_t)y;
+            if (d < 0) d += 4 * x + 6;
+            else       d += 4 * (x - y--) + 10;
+            x++;
+        }
+        gfx_hline(cx - hw[0], cy, 2 * hw[0] + 1, c);
+        for (int i = 1; i <= r; i++) {
+            if (hw[i] < 0) continue;
+            gfx_hline(cx - hw[i], cy + i, 2 * hw[i] + 1, c);
+            gfx_hline(cx - hw[i], cy - i, 2 * hw[i] + 1, c);
+        }
+        return;
+    }
+    int x = 0, y = r, d = 3 - 2 * r;
+>>>>>>>
