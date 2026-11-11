@@ -1267,17 +1267,37 @@ static NOINL int cutAt() { return partyT ? (doorX + basePadX + 20) / 2 : (uint8_
 static void updateShots() {
     updateDelivery();
     if (bumpT) bumpT--;
+    struct Tgt { Enemy *e; int16_t x, y; uint8_t hw; };
+    Tgt tg[ENS]; int nt = 0;                                          // the live targets, their pixel boxes worked out once
+    bool anyShot = false;
+    for (const auto &s : shots) if (s.life) { anyShot = true; break; }
+    if (anyShot) for (auto &e : en) {
+        if (!e.kind) continue;
+        const int ey = e.y >> 4;
+        if (e.kind == E_UFO && ey < TOP) continue;
+        tg[nt++] = { &e, (int16_t)(e.x >> 4), (int16_t)ey, (uint8_t)(e.kind == E_UFO ? 11 : e.kind == E_MOTHER ? 22 : 6) };
+    }
     for (auto &s : shots) {
         if (!s.life) continue;
         s.life--;
+        // the swept box of the (up to 7) steps: targets it cannot touch are left out of the step loop
+        const int dx = s.kind == 3 ? 0 : 7 * s.dir, dy = s.kind == 3 ? 7 : 7 * (s.vy < 0 ? -s.vy : s.vy);
+        const int xa = (dx < 0 ? s.x + dx : s.x), xb = (dx < 0 ? s.x : s.x + dx), ya = s.y - dy, yb = s.y + dy;
+        const int ty = s.kind >= 2 ? 8 : 5;
+        Tgt *cand[ENS]; int nc = 0;
+        for (int i = 0; i < nt; i++) {
+            const Tgt &t = tg[i];
+            if (xb < t.x - t.hw || xa > t.x + t.hw || yb < t.y - ty || ya > t.y + ty) continue;
+            cand[nc++] = &tg[i];
+        }
         for (int step = 0; step < 7 && s.life; step++) {
             if (s.kind == 3) s.y++; else { s.x = (int16_t)(s.x + s.dir); if (step & 1) s.y = (int16_t)(s.y + s.vy); }
             if (s.y >= groundAt(s.x) && s.kind != 2) { part(s.x, s.y, -s.dir * 8, -10, 8, C_GOLD); s.life = 0; break; }
-            for (auto &e : en) {
+            for (int ci = 0; ci < nc; ci++) {
+                Enemy &e = *cand[ci]->e;
                 if (!e.kind) continue;
-                const int ex = e.x >> 4, ey = e.y >> 4, hw = e.kind == E_UFO ? 11 : e.kind == E_MOTHER ? 22 : 6;
-                if (e.kind == E_UFO && ey < TOP) continue;
-                if (absi(s.x - ex) <= hw && absi(s.y - ey) <= (s.kind >= 2 ? 8 : 5)) {
+                const int ex = cand[ci]->x, ey = cand[ci]->y, hw = cand[ci]->hw;
+                if (absi(s.x - ex) <= hw && absi(s.y - ey) <= ty) {
                     if ((s.kind & 6) == 2) {
                         if (e.hit || (e.kind == E_WORM && e.st == 0)) continue;
                         e.hit = 30; part(s.x, s.y, -s.dir * 10, -8, 10, C_WHITE);
