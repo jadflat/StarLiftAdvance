@@ -48,12 +48,12 @@ __attribute__((noinline)) static bool skyObj(const CSpr &s, int x, int y, const 
     if (stars) for (int r = y0; r < y1 && r < ry; r++) {
         if (clip && !gba_starRow[r]) continue;
         uint32_t *const q = FB_WORDS + FB_WY(r);
-        const uint32_t *const m = e->data + (r - y) * 2 * nw + nw;
+        const uint32_t *const m = e->data + 2 * e->h + e->h + (r - y);                // (column k's mask: m[k * 2h]; patch 02's pool is column-major)
         for (int i = w0; i < w1; i++) {
             if (!q[FB_GX(i)] || r >= cmax[i]) continue;
             const int k = i - wx;
-            uint32_t v = (unsigned)k < (unsigned)nw ? m[k] << sh : 0;
-            if (sh && (unsigned)(k - 1) < (unsigned)nw) v |= m[k - 1] >> (32 - sh);
+            uint32_t v = (unsigned)k < (unsigned)nw ? m[k * 2 * e->h] << sh : 0;
+            if (sh && (unsigned)(k - 1) < (unsigned)nw) v |= m[(k - 1) * 2 * e->h] >> (32 - sh);
             if (r >= cmin[i]) { uint32_t open = 0; for (int j = 0; j < 8; j++) if (r < clip[i * 8 + j]) open |= 15u << (j * 4); v &= open; }
             q[FB_GX(i)] &= ~v;
         }
@@ -78,10 +78,10 @@ __attribute__((noinline)) static bool skyObj(const CSpr &s, int x, int y, const 
             for (int ty = 0; ty < th; ty++)
                 for (int tx = 0; tx < tw; tx++) {
                     if (tx >= cw || ty * 8 >= s.h) { for (int k = 0; k < 8; k++) *t++ = 0; continue; }
-                    const uint32_t *src = e->data + ty * 8 * 2 * nw + c0 + tx;
+                    const uint32_t *src = e->data + (c0 + tx + 1) * 2 * e->h + ty * 8;
                     const int rows = s.h - ty * 8 < 8 ? s.h - ty * 8 : 8;
                     int k = 0;
-                    for (; k < rows; k++, src += 2 * nw) *t++ = *src;
+                    for (; k < rows; k++) *t++ = *src++;
                     for (; k < 8; k++) *t++ = 0;
                 }
         }
